@@ -41,19 +41,19 @@ def main(argv):
     pixel_scale = 0.2 # arcseconds
 
     #-----------------------------------------------------------------------------------------------
-    # Part B: chromatic bulge+disk galaxy
 
     logger.info('')
     logger.info('Starting part B: chromatic bulge+disk galaxy')
     totalFlux = 4.8
-    fluxNum = 11
+    fluxNum = 5
     redshiftMin, redshiftMax = 0.0, 1.5
-    redshiftNum = int((redshiftMax - redshiftMin) * 10 + 1)
+    redshiftNum = 5 # int((redshiftMax - redshiftMin) * 10 + 1)
     bulgeG1, bulgeG2 = 0.12, 0.07
     diskG1, diskG2 = 0.4, 0.2
     mono_bulge_HLR, mono_disk_HLR = 0.5, 2.0
     psf_FWHM, psf_beta = 0.6, 2.5
     noiseSigma = 0.02
+    noiseIterations = 10
     # Bulge-to-total ratio can only range from 0 to 1; the amount of bulge flux cannot be greater 
     # than the total amount of flux.
     for fluxRatio in numpy.linspace(0.0,1.0,fluxNum):   
@@ -80,20 +80,24 @@ def main(argv):
                 if not os.path.isdir('output_{}'.format(filter_name)):
                     os.mkdir('output_{}'.format(filter_name))
                 outpath = os.path.abspath(os.path.join(path, "output_{}/".format(filter_name)))
-                img = galsim.ImageF(64, 64, scale=pixel_scale)
-                bdfinal.drawImage(filter_, image=img)
-                img.addNoise(gaussian_noise)
+                images = []
+                # Create many images with different noises, compile into a cube
+                for i in xrange(noiseIterations):
+                    img = galsim.ImageF(64, 64, scale=pixel_scale)
+                    bdfinal.drawImage(filter_, image=img)
+                    img.addNoise(gaussian_noise)
+                    images.append(img)
                 logger.debug('Created {}-band image'.format(filter_name))
-                out_filename = os.path.join(outpath, 'demo12b_{}_{}_{}.fits'.format(filter_name,fluxRatio,redshift))
-                galsim.fits.write(img, out_filename)
-                logger.debug('Wrote {}-band image to disk, bulge-to-total ratio = {}, redshift = {}'.format(filter_name,
-                                                                                                            fluxRatio,
-                                                                                                            redshift))
+                out_filename = os.path.join(outpath, 'gal_{}_{}_{}.fits'.format(filter_name,fluxRatio,redshift))
+                galsim.fits.writeCube(images, out_filename)
+                logger.debug('Wrote {}-band image to disk, '
+                             + 'bulge-to-total ratio = {}, '
+                             + 'redshift = {}'.format(filter_name, fluxRatio, redshift))
                 logger.info('Added flux for {}-band image: {}'.format(filter_name, img.added_flux))
 
     logger.info('You can display the output in ds9 with a command line that looks something like:')
-    logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/demo12b_r.fits -green -scale limits'
-                +' -0.25 1.0 output_i/demo12b_i.fits -red -scale limits -0.25 1.0 output_z/demo12b_z.fits'
+    logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/gal_r.fits -green -scale limits'
+                +' -0.25 1.0 output_i/gal_i.fits -red -scale limits -0.25 1.0 output_z/gal_z.fits'
                 +' -zoom 2 &')
 
 if __name__ == "__main__":
