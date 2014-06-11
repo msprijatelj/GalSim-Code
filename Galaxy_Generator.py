@@ -25,17 +25,7 @@ def main(argv):
     SEDs = {}
     for SED_name in SED_names:
         SED_filename = os.path.join(datapath, '{}.sed'.format(SED_name))
-        # Here we create some galsim.SED objects to hold star or galaxy spectra.  The most
-        # convenient way to create realistic spectra is to read them in from a two-column ASCII
-        # file, where the first column is wavelength and the second column is flux. Wavelengths in
-        # the example SED files are in Angstroms, flux in flambda.  The default wavelength type for
-        # galsim.SED is nanometers, however, so we need to override by specifying
-        # `wave_type = 'Ang'`.
         SED = galsim.SED(SED_filename, wave_type='Ang')
-        # The normalization of SEDs affects how many photons are eventually drawn into an image.
-        # One way to control this normalization is to specify the flux density in photons per nm
-        # at a particular wavelength.  For example, here we normalize such that the photon density
-        # is 1 photon per nm at 500 nm.
         SEDs[SED_name] = SED.withFluxDensity(target_flux_density=1.0, wavelength=500)
     logger.debug('Successfully read in SEDs')
 
@@ -44,18 +34,7 @@ def main(argv):
     filters = {}
     for filter_name in filter_names:
         filter_filename = os.path.join(datapath, 'LSST_{}.dat'.format(filter_name))
-        # Here we create some galsim.Bandpass objects to represent the filters we're observing
-        # through.  These include the entire imaging system throughput including the atmosphere,
-        # reflective and refractive optics, filters, and the CCD quantum efficiency.  These are
-        # also conveniently read in from two-column ASCII files where the first column is
-        # wavelength and the second column is dimensionless flux. The example filter files have
-        # units of nanometers and dimensionless throughput, which is exactly what galsim.Bandpass
-        # expects, so we just specify the filename.
         filters[filter_name] = galsim.Bandpass(filter_filename)
-        # For speed, we can thin out the wavelength sampling of the filter a bit.
-        # In the following line, `rel_err` specifies the relative error when integrating over just
-        # the filter (however, this is not necessarily the relative error when integrating over the
-        # filter times an SED)
         filters[filter_name] = filters[filter_name].thin(rel_err=1e-4)
     logger.debug('Read in filters')
 
@@ -67,34 +46,36 @@ def main(argv):
     logger.info('')
     logger.info('Starting part B: chromatic bulge+disk galaxy')
     totalFlux = 4.8
-    for baseFluxRatio in xrange(0,11,1):
-        fluxRatio = baseFluxRatio / 10.0
-        for baseRedshift in xrange(0,16,1):
-            redshift = baseRedshift / 10.0
-            # make a bulge ...
-            mono_bulge = galsim.DeVaucouleurs(half_light_radius=0.5)
+    fluxNum = 11
+    redshiftMin, redshiftMax = 0.0, 1.5
+    redshiftNum = int((redshiftMax - redshiftMin) * 10 + 1)
+    bulgeG1, bulgeG2 = 0.12, 0.07
+    diskG1, diskG2 = 0.4, 0.2
+    mono_bulge_HLR, mono_disk_HLR = 0.5, 2.0
+    psf_FWHM, psf_beta = 0.6, 2.5
+    noiseSigma = 0.02
+    # Bulge-to-total ratio can only range from 0 to 1; the amount of bulge flux cannot be greater 
+    # than the total amount of flux.
+    for fluxRatio in numpy.linspace(0.0,1.0,fluxNum):   
+        for redshift in numpy.linspace(redshiftMin,redshiftMax,redshiftNum):
+            mono_bulge = galsim.DeVaucouleurs(half_light_radius=mono_bulge_HLR)
             bulge_SED = SEDs['CWW_E_ext'].atRedshift(redshift)
-            # The `*` operator can be used as a shortcut for creating a chromatic version of a GSObject:
             bulge = mono_bulge * bulge_SED
-            bulge = bulge.shear(g1=0.12, g2=0.07)
+            bulge = bulge.shear(g1=bulgeG1, g2=bulgeG2)
             logger.debug('Created bulge component')
-            # ... and a disk ...
-            mono_disk = galsim.Exponential(half_light_radius=2.0)
+            mono_disk = galsim.Exponential(half_light_radius=mono_disk_HLR)
             disk_SED = SEDs['CWW_Im_ext'].atRedshift(redshift)
             disk = mono_disk * disk_SED
-            disk = disk.shear(g1=0.4, g2=0.2)
+            disk = disk.shear(g1=diskG1, g2=diskG2)
             logger.debug('Created disk component')
-            # ... and then combine them.
             bulgeMultiplier, diskMultiplier = fluxRatio * totalFlux, (1 - fluxRatio) * totalFlux
             bdgal = 1.1 * (bulgeMultiplier*bulge+diskMultiplier*disk)
-            PSF = galsim.Moffat(fwhm=0.6, beta=2.5)
+            PSF = galsim.Moffat(fwhm=psf_FWHM, beta=psf_beta)
             bdfinal = galsim.Convolve([bdgal, PSF])
-            # Note that at this stage, our galaxy is chromatic but our PSF is still achromatic.  Part C)
-            # below will dive into chromatic PSFs.
             logger.debug('Created bulge+disk galaxy final profile')
         
             # draw profile through LSST filters
-            gaussian_noise = galsim.GaussianNoise(rng, sigma=0.02)
+            gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
             for filter_name, filter_ in filters.iteritems():
                 if not os.path.isdir('output_{}'.format(filter_name)):
                     os.mkdir('output_{}'.format(filter_name))
@@ -103,16 +84,16 @@ def main(argv):
                 bdfinal.drawImage(filter_, image=img)
                 img.addNoise(gaussian_noise)
                 logger.debug('Created {}-band image'.format(filter_name))
-                out_filename = os.path.join(outpath, 'demo12b_{}_{}_{}.fits'.format(filter_name,baseFluxRatio,baseRedshift))
+                out_filename = os.path.join(outpath, 'demo12b_{}_{}_{}.fits'.format(filter_name,fluxRatio,redshift))
                 galsim.fits.write(img, out_filename)
                 logger.debug('Wrote {}-band image to disk, bulge-to-total ratio = {}, redshift = {}'.format(filter_name,
-                                                                                                            baseFluxRatio,
-                                                                                                            baseRedshift))
+                                                                                                            fluxRatio,
+                                                                                                            redshift))
                 logger.info('Added flux for {}-band image: {}'.format(filter_name, img.added_flux))
 
     logger.info('You can display the output in ds9 with a command line that looks something like:')
-    logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output/demo12b_r.fits -green -scale limits'
-                +' -0.25 1.0 output/demo12b_i.fits -red -scale limits -0.25 1.0 output/demo12b_z.fits'
+    logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/demo12b_r.fits -green -scale limits'
+                +' -0.25 1.0 output_i/demo12b_i.fits -red -scale limits -0.25 1.0 output_z/demo12b_z.fits'
                 +' -zoom 2 &')
 
 if __name__ == "__main__":
