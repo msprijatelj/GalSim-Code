@@ -13,7 +13,8 @@ def main(argv):
     outpath = os.path.abspath(os.path.join(path, "output/"))
 
     # In non-script code, use getLogger(__name__) at module scope instead.
-    logging.basicConfig(format="%(message)s", level=logging.INFO, stream=sys.stdout)
+    logging.basicConfig(format="%(message)s", level=logging.INFO, 
+                        stream=sys.stdout)
     logger = logging.getLogger("demo12")
 
     # initialize (pseudo-)random number generator
@@ -26,14 +27,16 @@ def main(argv):
     for SED_name in SED_names:
         SED_filename = os.path.join(datapath, '{}.sed'.format(SED_name))
         SED = galsim.SED(SED_filename, wave_type='Ang')
-        SEDs[SED_name] = SED.withFluxDensity(target_flux_density=1.0, wavelength=500)
+        SEDs[SED_name] = SED.withFluxDensity(target_flux_density=1.0, 
+                                             wavelength=500)
     logger.debug('Successfully read in SEDs')
 
     # read in the LSST filters
     filter_names = 'ugrizy'
     filters = {}
     for filter_name in filter_names:
-        filter_filename = os.path.join(datapath, 'LSST_{}.dat'.format(filter_name))
+        filter_filename = os.path.join(datapath, 
+                                       'LSST_{}.dat'.format(filter_name))
         filters[filter_name] = galsim.Bandpass(filter_filename)
         filters[filter_name] = filters[filter_name].thin(rel_err=1e-4)
     logger.debug('Read in filters')
@@ -45,17 +48,19 @@ def main(argv):
     logger.info('')
     logger.info('Starting part B: chromatic bulge+disk galaxy')
     totalFlux = 4.8
+    # Iterations to complete
     fluxNum = 5
+    redshiftNum = 5
+    noiseIterations = 10
+    # Other parameters
     redshiftMin, redshiftMax = 0.0, 1.5
-    redshiftNum = 5 # int((redshiftMax - redshiftMin) * 10 + 1)
     bulgeG1, bulgeG2 = 0.12, 0.07
     diskG1, diskG2 = 0.4, 0.2
     mono_bulge_HLR, mono_disk_HLR = 0.5, 2.0
     psf_FWHM, psf_beta = 0.6, 2.5
     noiseSigma = 0.02
-    noiseIterations = 10
-    # Bulge-to-total ratio can only range from 0 to 1; the amount of bulge flux cannot be greater 
-    # than the total amount of flux.
+    # Bulge-to-total ratio can only range from 0 to 1; the amount of bulge flux
+    # cannot be greater than the total amount of flux.
     for fluxRatio in numpy.linspace(0.0,1.0,fluxNum):   
         for redshift in numpy.linspace(redshiftMin,redshiftMax,redshiftNum):
             mono_bulge = galsim.DeVaucouleurs(half_light_radius=mono_bulge_HLR)
@@ -68,7 +73,8 @@ def main(argv):
             disk = mono_disk * disk_SED
             disk = disk.shear(g1=diskG1, g2=diskG2)
             logger.debug('Created disk component')
-            bulgeMultiplier, diskMultiplier = fluxRatio * totalFlux, (1 - fluxRatio) * totalFlux
+            bulgeMultiplier = fluxRatio * totalFlux
+            diskMultiplier = (1 - fluxRatio) * totalFlux
             bdgal = 1.1 * (bulgeMultiplier*bulge+diskMultiplier*disk)
             PSF = galsim.Moffat(fwhm=psf_FWHM, beta=psf_beta)
             bdfinal = galsim.Convolve([bdgal, PSF])
@@ -79,7 +85,8 @@ def main(argv):
             for filter_name, filter_ in filters.iteritems():
                 if not os.path.isdir('output_{}'.format(filter_name)):
                     os.mkdir('output_{}'.format(filter_name))
-                outpath = os.path.abspath(os.path.join(path, "output_{}/".format(filter_name)))
+                outDir = "output_{}/".format(filter_name)
+                outpath = os.path.abspath(os.path.join(path, outDir))
                 images = []
                 # Create many images with different noises, compile into a cube
                 for i in xrange(noiseIterations):
@@ -88,11 +95,14 @@ def main(argv):
                     img.addNoise(gaussian_noise)
                     images.append(img)
                 logger.debug('Created {}-band image'.format(filter_name))
-                out_filename = os.path.join(outpath, 'gal_{}_{}_{}.fits'.format(filter_name,fluxRatio,redshift))
+                fitsName = 'gal_{}_{}_{}.fits'.format(filter_name,fluxRatio,
+                                                      redshift)
+                out_filename = os.path.join(outpath, fitsName)
                 galsim.fits.writeCube(images, out_filename)
                 logger.debug('Wrote {}-band image to disk, '
                              + 'bulge-to-total ratio = {}, '
-                             + 'redshift = {}'.format(filter_name, fluxRatio, redshift))
+                             + 'redshift = {}'.format(filter_name, fluxRatio, 
+                                                      redshift))
                 logger.info('Added flux for {}-band image: {}'.format(filter_name, img.added_flux))
 
     logger.info('You can display the output in ds9 with a command line that looks something like:')
