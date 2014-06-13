@@ -4,6 +4,7 @@ import os
 import shutil
 import math
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import numpy
 import logging
 import galsim
@@ -44,6 +45,8 @@ def main(argv):
     fluxMin, fluxMax = 0.0, 1.0
     redshiftMin, redshiftMax = 0.2, 1.0
     noiseSigma = 0.02
+    # Make the pdf file
+    pp = PdfPages('FluxPlots.pdf')    
     for fluxRatio in numpy.linspace(fluxMin,fluxMax,fluxNum):   
         for redshift in numpy.linspace(redshiftMin,redshiftMax,redshiftNum):
             bulge = makeBulge(redshift, SEDs)      
@@ -54,7 +57,8 @@ def main(argv):
             logger.debug('Created bulge+disk galaxy final profile')
         
             # draw profile through LSST filters
-            avgFluxes, avgSigmas, filter_name_list = [], [], []
+            avgFluxes, avgSigmas = [], []
+            filter_name_list = [char.upper() for char in filter_names]
             gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
             for filter_name in filter_names:
                 filter_ = filters[filter_name]
@@ -69,7 +73,6 @@ def main(argv):
                 images = makeCubeImages(img, gaussian_noise, noiseIterations)
                 avgFlux, avgSigma, stDev, successRate = findAvgFlux(images)
                 avgFluxes.append(avgFlux), avgSigmas.append(avgSigma)
-                filter_name_list.append(filter_name.upper())
                 logger.debug('Created {}-band image'.format(filter_name))
                 fitsName = 'gal_{}_{}_{}.fits'.format(filter_name,fluxRatio,
                                                       redshift)
@@ -84,8 +87,8 @@ def main(argv):
                 logger.info('Standard Deviation = {}'.format(stDev))                
                 logger.info('Success Rate = {}'.format(successRate))
             plotData = zip(filter_name_list,avgFluxes,avgSigmas)
-            drawPlot(plotData)
-                
+            drawPlot(plotData,pp,fluxRatio,redshift)
+    pp.close()
     logger.info('You can display the output in ds9 with a command line that looks something like:')
     logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/gal_r.fits -green -scale limits'
                 +' -0.25 1.0 output_i/gal_i.fits -red -scale limits -0.25 1.0 output_z/gal_z.fits'
@@ -158,7 +161,7 @@ def findAvgFlux(images):
             flux = galsim.hsm.FindAdaptiveMom(image, strict = False)
         fluxList.append(flux.moments_amp)
         sigmaList.append(flux.moments_sigma)
-    avgFlux = sum(fluxList)/totalAttempts
+    avgFlux = abs(sum(fluxList)/totalAttempts)
     avgSigma = sum(sigmaList)/totalAttempts
     successRate = successes/totalAttempts
     stDev = calcStDev(fluxList, avgFlux)
@@ -173,7 +176,7 @@ def calcStDev(entries, mean):
 
 # drawPlot is modified from barchart_demo.py from 
 # http://matplotlib.org/mpl_examples/pylab_examples/barchart_demo.py
-def drawPlot(plotData):
+def drawPlot(plotData,pp,fluxRatio,redshift):
     n_groups = len(plotData)
     filter_name_list = [plotData[i][0] for i in xrange(n_groups)]
     avgFluxes = [plotData[i][1] for i in xrange(n_groups)]
@@ -191,11 +194,12 @@ def drawPlot(plotData):
                      error_kw=error_config,
                      label='Flux',clip_on = True)
     plt.xlabel('Band')
-    plt.ylabel('Flux')
+    plt.ylabel('Magnitude of the Flux')
     plt.ylim(0)
-    plt.title('Flux Across Bands')
+    plt.title('Flux with {} B/T ratio & {} redshift'.format(fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
-    plt.show()
-
+    #plt.show()
+    pp.savefig()
+    
 if __name__ == "__main__":
     main(sys.argv)
