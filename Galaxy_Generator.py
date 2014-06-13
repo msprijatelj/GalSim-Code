@@ -3,6 +3,7 @@ import sys
 import os
 import shutil
 import math
+import matplotlib.pyplot as plt
 import numpy
 import logging
 import galsim
@@ -25,7 +26,8 @@ def main(argv):
     SEDs = readInSEDs(datapath)
     logger.debug('Successfully read in SEDs')
     # read in the LSST filters
-    filters = readInLSST(datapath)
+    filter_names = 'ugrizy'
+    filters = readInLSST(datapath,filter_names)
     logger.debug('Read in filters')
 
     pixel_scale = 0.2 # arcseconds
@@ -52,9 +54,10 @@ def main(argv):
             logger.debug('Created bulge+disk galaxy final profile')
         
             # draw profile through LSST filters
+            avgFluxes, avgSigmas, filter_name_list = [], [], []
             gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
-            for filter_name, filter_ in filters.iteritems():
-                #if filter_name == "u": continue
+            for filter_name in filter_names:
+                filter_ = filters[filter_name]
                 outputDir = 'output_{}'.format(filter_name)
                 if os.path.isdir(outputDir):
                     shutil.rmtree(outputDir)
@@ -65,6 +68,8 @@ def main(argv):
                 bdfinal.drawImage(filter_, image=img)
                 images = makeCubeImages(img, gaussian_noise, noiseIterations)
                 avgFlux, avgSigma, stDev, successRate = findAvgFlux(images)
+                avgFluxes.append(avgFlux), avgSigmas.append(avgSigma)
+                filter_name_list.append(filter_name.upper())
                 logger.debug('Created {}-band image'.format(filter_name))
                 fitsName = 'gal_{}_{}_{}.fits'.format(filter_name,fluxRatio,
                                                       redshift)
@@ -77,7 +82,9 @@ def main(argv):
                 logger.info('Average flux for {}-band image: {}'.format(filter_name, avgFlux))
                 logger.info('Average Sigma = {}'.format(avgSigma))                
                 logger.info('Standard Deviation = {}'.format(stDev))                
-                logger.info('Success Rate = {}'.format(successRate))                
+                logger.info('Success Rate = {}'.format(successRate))
+            plotData = zip(filter_name_list,avgFluxes,avgSigmas)
+            drawPlot(plotData)
                 
     logger.info('You can display the output in ds9 with a command line that looks something like:')
     logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/gal_r.fits -green -scale limits'
@@ -94,8 +101,7 @@ def readInSEDs(datapath):
                                              wavelength=500)
     return SEDs
 
-def readInLSST(datapath):
-    filter_names = 'ugrizy'
+def readInLSST(datapath, filter_names):
     filters = {}
     for filter_name in filter_names:
         filter_filename = os.path.join(datapath, 
@@ -164,6 +170,32 @@ def calcStDev(entries, mean):
         devTotal += (mean - entry) ** 2
     stDev = math.sqrt(devTotal/len(entries))
     return stDev
+
+# drawPlot is modified from barchart_demo.py from 
+# http://matplotlib.org/mpl_examples/pylab_examples/barchart_demo.py
+def drawPlot(plotData):
+    n_groups = len(plotData)
+    filter_name_list = [plotData[i][0] for i in xrange(n_groups)]
+    avgFluxes = [plotData[i][1] for i in xrange(n_groups)]
+    avgSigmas = [plotData[i][2] for i in xrange(n_groups)]
+    colors = ["k","b","g","y","r","m"]
+    index = numpy.arange(n_groups)
+    fig, ax = plt.subplots()
+    bar_width = 0.5
+    opacity = 0.60
+    error_config = {'ecolor': '0.3'}
+    rects1 = plt.bar(index, avgFluxes, bar_width, bottom = 0, align = "center",
+                     alpha = opacity,
+                     color=colors,
+                     yerr=avgSigmas,
+                     error_kw=error_config,
+                     label='Flux',clip_on = True)
+    plt.xlabel('Band')
+    plt.ylabel('Flux')
+    plt.ylim(0)
+    plt.title('Flux Across Bands')
+    plt.xticks(index, filter_name_list)
+    plt.show()
 
 if __name__ == "__main__":
     main(sys.argv)
