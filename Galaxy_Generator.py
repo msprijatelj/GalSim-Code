@@ -56,8 +56,8 @@ def makeGalaxies(SEDs, filters, filter_names, path, logger):
     logger.info('')
     logger.info('Starting to generate chromatic bulge+disk galaxy')
     # Iterations to complete
-    fluxNum = 3
-    redshiftNum = 3
+    fluxNum = 1
+    redshiftNum = 2
     # Other parameters
     fluxMin, fluxMax = 0.0, 1.0
     redshiftMin, redshiftMax = 0.2, 1.0
@@ -179,18 +179,14 @@ def findAvgFlux(images):
             successes += 1
             fluxList.append(flux)
             sigmaList.append(sigma)
-    avgFlux = sum(fluxList)/totalAttempts
-    avgSigma = sum(sigmaList)/totalAttempts
+        else:
+            fluxList.append(0)
+            sigmaList.append(0)
+    avgFlux = numpy.mean(fluxList)
+    avgSigma = numpy.mean(sigmaList)
     successRate = successes/totalAttempts
-    stDev = calcStDev(fluxList, avgFlux)
+    stDev = numpy.std(fluxList)
     return avgFlux, avgSigma, stDev, successRate
-
-def calcStDev(entries, mean):
-    devTotal = 0
-    for entry in entries:
-        devTotal += (mean - entry) ** 2
-    stDev = math.sqrt(devTotal/len(entries))
-    return stDev
 
 # drawPlot is modified from barchart_demo.py from 
 # http://matplotlib.org/mpl_examples/pylab_examples/barchart_demo.py
