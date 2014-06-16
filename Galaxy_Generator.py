@@ -25,6 +25,11 @@ def main(argv):
     logger.debug('Successfully read in SEDs')
     # read in the LSST filters
     data.filter_names = 'ugrizy'
+    data.filter_name_list = [char.upper() for char in data.filter_names]
+    data.color_name_list = []
+    for i in xrange(1,len(data.filter_names)):
+        data.color_name_list.append("%s-%s" % (data.filter_names[i-1],
+                                    data.filter_names[i]))
     clearOutputs(data.filter_names)
     data.filters = readInLSST(datapath,data.filter_names)
     logger.debug('Read in filters')
@@ -70,7 +75,6 @@ def makeGalaxies(data):
     # Other parameters
     fluxMin, fluxMax = 0.0, 1.0
     redshiftMin, redshiftMax = 0.2, 1.0
-    # Make the pdf file
     fluxIndex = 0
     fig, ax = plt.subplots()
     plt.xlim([-1,len(data.filter_names)])
@@ -80,8 +84,9 @@ def makeGalaxies(data):
             bdfinal = makeGalaxy(fluxRatio, redshift, data.SEDs)
             data.logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
-            plotData = applyFilter(data,fluxRatio,redshift,bdfinal)
-            newPlot(plotData,fluxRatio,redshift,fluxIndex,shiftIndex)         
+            applyFilter(data,fluxRatio,redshift,bdfinal)
+            findColors(data)
+            newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex)         
             shiftIndex += 1
         fluxIndex += 1
     plt.xlabel('Band')
@@ -132,7 +137,6 @@ def applyFilter(data,fluxRatio,redshift,bdfinal):
     rng = galsim.BaseDeviate(random_seed)
     noiseSigma = 0.02
     avgFluxes, avgSigmas, stDevs = [], [], []
-    filter_name_list = [char.upper() for char in data.filter_names]
     gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
     for filter_name in data.filter_names:
         outpath = setOutput(filter_name,data.path)
@@ -154,8 +158,7 @@ def applyFilter(data,fluxRatio,redshift,bdfinal):
         data.logger.info('Average Sigma = {}'.format(avgSigma))                
         data.logger.info('Standard Deviation = {}'.format(stDev))                
         data.logger.info('Success Rate = {}'.format(successRate))
-    plotData = zip(filter_name_list,avgFluxes,stDevs)
-    return plotData
+    data.avgFluxes, data.stDevs = avgFluxes, stDevs
 
 def setOutput(filter_name,path):
     outputDir = 'output_{}'.format(filter_name)
@@ -206,11 +209,20 @@ def findAvgFlux(images):
     stDev = numpy.std(fluxList)
     return avgFlux, avgSigma, stDev, successRate
 
-def newPlot(plotData,fluxRatio,redshift,fluxIndex,shiftIndex):
-    n_groups = len(plotData)
-    filter_name_list = [plotData[i][0] for i in xrange(n_groups)]
-    avgFluxes = [plotData[i][1] for i in xrange(n_groups)]
-    stDevs = [plotData[i][2] for i in xrange(n_groups)]
+def findColors(data):
+    data.colors = []
+    data.colorStDevs = []
+    for i in xrange(1,len(data.avgFluxes)):
+        newColor = -2.5*math.log10(data.avgFluxes[i-1]/data.avgFluxes[i])
+        newColorStDev = -2.5*math.log10(data.stDevs[i-1]/data.stDevs[i])
+        data.colors.append(newColor)
+        data.colorStDevs.append(newColorStDev)
+
+def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
+    n_groups = len(data.avgFluxes)
+    filter_name_list = data.filter_name_list
+    avgFluxes = data.avgFluxes
+    stDevs = data.stDevs
     # colors = ["b","c","g","y","r","m"]
     colors = ["g","y","r","m"]
     shapes = ["o","^","s","p","h","D"]
@@ -221,11 +233,23 @@ def newPlot(plotData,fluxRatio,redshift,fluxIndex,shiftIndex):
                  linestyle = "none", barsabove = True, ecolor = "k",
                  label = "{} B/T, {} redshift".format(fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
+    
+    m_groups = len(data.colors)
+    color_name_list = data.color_name_list
+    avgFluxes = data.avgFluxes
+    stDevs = data.stDevs
+    # colors = ["b","c","g","y","r","m"]
+    colors = ["g","y","r","m"]
+    shapes = ["o","^","s","p","h","D"]
+    colorIndex = range(m_groups)
+    plt.errorbar(colorIndex, avgFluxes, stDevs, None, 
+                 marker = "%s" % shapes[fluxIndex], 
+                 mfc = "%s" % colors[shiftIndex], capsize = 10,
+                 linestyle = "none", barsabove = True, ecolor = "k",
+                 label = "{} B/T, {} redshift".format(fluxRatio,redshift))
+    plt.xticks(colorIndex, color_name_list)
 
-def colorPlot():
-    pass
 
-# -2.5*log base 10(Flux1/Flux2)
 # flux = sum(Image*model)/sum(model**2)
 # use parameter to pick between original and new model
 # make Zebra-friendly output file
