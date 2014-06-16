@@ -233,22 +233,22 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
                  linestyle = "none", barsabove = True, ecolor = "k",
                  label = "{} B/T, {} redshift".format(fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
-    
+    """
     m_groups = len(data.colors)
     color_name_list = data.color_name_list
-    avgFluxes = data.avgFluxes
-    stDevs = data.stDevs
+    colors = data.colors
+    colorStDevs = data.colorStDevs
     # colors = ["b","c","g","y","r","m"]
     colors = ["g","y","r","m"]
     shapes = ["o","^","s","p","h","D"]
     colorIndex = range(m_groups)
-    plt.errorbar(colorIndex, avgFluxes, stDevs, None, 
+    plt.errorbar(colorIndex, colors, colorStDevs, None, 
                  marker = "%s" % shapes[fluxIndex], 
                  mfc = "%s" % colors[shiftIndex], capsize = 10,
                  linestyle = "none", barsabove = True, ecolor = "k",
                  label = "{} B/T, {} redshift".format(fluxRatio,redshift))
     plt.xticks(colorIndex, color_name_list)
-
+    """
 
 # flux = sum(Image*model)/sum(model**2)
 # use parameter to pick between original and new model
