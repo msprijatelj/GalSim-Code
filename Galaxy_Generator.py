@@ -4,7 +4,6 @@ import os
 import shutil
 import math
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 import numpy
 import logging
 import galsim
@@ -56,22 +55,34 @@ def makeGalaxies(SEDs, filters, filter_names, path, logger):
     logger.info('')
     logger.info('Starting to generate chromatic bulge+disk galaxy')
     # Iterations to complete
-    fluxNum = 1
-    redshiftNum = 2
+    fluxNum = 3
+    redshiftNum = 3
     # Other parameters
     fluxMin, fluxMax = 0.0, 1.0
     redshiftMin, redshiftMax = 0.2, 1.0
     # Make the pdf file
-    pp = PdfPages('FluxPlots.pdf')    
+    fluxIndex = 0
+    fig, ax = plt.subplots()
+    plt.xlim([-1,len(filter_names)])
     for fluxRatio in numpy.linspace(fluxMin,fluxMax,fluxNum):   
+        shiftIndex = 0
         for redshift in numpy.linspace(redshiftMin,redshiftMax,redshiftNum):           
             bdfinal = makeGalaxy(fluxRatio, redshift, SEDs)
             logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
             plotData = applyFilter(fluxRatio,redshift,filters,filter_names,
                                    path,bdfinal,logger)
-            drawPlot(plotData,pp,fluxRatio,redshift)
-    pp.close()
+            newPlot(plotData,fluxRatio,redshift,fluxIndex,shiftIndex)         
+            shiftIndex += 1
+        fluxIndex += 1
+    plt.xlabel('Band')
+    plt.ylabel('Magnitude of the Flux')
+    plt.ylim(0)
+    plt.title('Flux across bands at varied flux ratios and redshifts')
+    plt.grid()
+    lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+    plt.show()
+    plt.savefig("Flux_Plot.png",bbox_extra_artists=(lgd,), bbox_inches='tight')
 
 # Individual galaxy generator functions
 def makeGalaxy(fluxRatio, redshift, SEDs):
@@ -188,32 +199,21 @@ def findAvgFlux(images):
     stDev = numpy.std(fluxList)
     return avgFlux, avgSigma, stDev, successRate
 
-# drawPlot is modified from barchart_demo.py from 
-# http://matplotlib.org/mpl_examples/pylab_examples/barchart_demo.py
-def drawPlot(plotData,pp,fluxRatio,redshift):
+def newPlot(plotData,fluxRatio,redshift,fluxIndex,shiftIndex):
     n_groups = len(plotData)
     filter_name_list = [plotData[i][0] for i in xrange(n_groups)]
     avgFluxes = [plotData[i][1] for i in xrange(n_groups)]
     stDevs = [plotData[i][2] for i in xrange(n_groups)]
-    colors = ["k","b","g","y","r","m"]
-    index = numpy.arange(n_groups)
-    fig, ax = plt.subplots()
-    bar_width = 0.5
-    opacity = 0.60
-    error_config = {'ecolor': '0.3'}
-    rects1 = plt.bar(index, avgFluxes, bar_width, bottom = 0, align = "center",
-                     alpha = opacity,
-                     color=colors,
-                     yerr=stDevs,
-                     error_kw=error_config,
-                     label='Flux',clip_on = True)
-    plt.xlabel('Band')
-    plt.ylabel('Magnitude of the Flux')
-    plt.ylim(0)
-    plt.title('Flux with {} B/T ratio & {} redshift'.format(fluxRatio,redshift))
+    # colors = ["b","c","g","y","r","m"]
+    colors = ["g","y","r","m"]
+    shapes = ["o","^","s","p","h","D"]
+    index = range(n_groups)
+    plt.errorbar(index, avgFluxes, stDevs, None, 
+                 marker = "%s" % shapes[fluxIndex], 
+                 mfc = "%s" % colors[shiftIndex], capsize = 10,
+                 linestyle = "none", barsabove = True, ecolor = "k",
+                 label = "{} B/T, {} redshift".format(fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
-    plt.show()
-    pp.savefig()
-    
+
 if __name__ == "__main__":
     main(sys.argv)
