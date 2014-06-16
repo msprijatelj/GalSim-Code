@@ -10,21 +10,24 @@ import galsim
 
 # Top-level function
 def main(argv):
+    class Struct(): pass
+    data = Struct()
+    data.forced = False
     # Where to find and output data
-    path, filename = os.path.split(__file__)
-    datapath = os.path.abspath(os.path.join(path, "data/"))
+    data.path, filename = os.path.split(__file__)
+    datapath = os.path.abspath(os.path.join(data.path, "data/"))
     # In non-script code, use getLogger(__name__) at module scope instead.
     logging.basicConfig(format="%(message)s", level=logging.INFO, 
                         stream=sys.stdout)
-    logger = logging.getLogger("demo12")
+    data.logger = logger = logging.getLogger("demo12")
     # read in SEDs
-    SEDs = readInSEDs(datapath)
+    data.SEDs = readInSEDs(datapath)
     logger.debug('Successfully read in SEDs')
     # read in the LSST filters
-    filter_names = 'ugrizy'
-    filters = readInLSST(datapath,filter_names)
+    data.filter_names = 'ugrizy'
+    data.filters = readInLSST(datapath,data.filter_names)
     logger.debug('Read in filters')
-    makeGalaxies(SEDs,filters,filter_names,path,logger)
+    makeGalaxies(data)
     logger.info('You can display the output in ds9 with a command line that looks something like:')
     logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/gal_r.fits -green -scale limits'
                 +' -0.25 1.0 output_i/gal_i.fits -red -scale limits -0.25 1.0 output_z/gal_z.fits'
@@ -51,9 +54,9 @@ def readInLSST(datapath, filter_names):
     return filters
 
 # Galaxy generating functions
-def makeGalaxies(SEDs, filters, filter_names, path, logger):
-    logger.info('')
-    logger.info('Starting to generate chromatic bulge+disk galaxy')
+def makeGalaxies(data):
+    data.logger.info('')
+    data.logger.info('Starting to generate chromatic bulge+disk galaxy')
     # Iterations to complete
     fluxNum = 3
     redshiftNum = 3
@@ -63,15 +66,14 @@ def makeGalaxies(SEDs, filters, filter_names, path, logger):
     # Make the pdf file
     fluxIndex = 0
     fig, ax = plt.subplots()
-    plt.xlim([-1,len(filter_names)])
+    plt.xlim([-1,len(data.filter_names)])
     for fluxRatio in numpy.linspace(fluxMin,fluxMax,fluxNum):   
         shiftIndex = 0
         for redshift in numpy.linspace(redshiftMin,redshiftMax,redshiftNum):           
-            bdfinal = makeGalaxy(fluxRatio, redshift, SEDs)
-            logger.debug('Created bulge+disk galaxy final profile')
+            bdfinal = makeGalaxy(fluxRatio, redshift, data.SEDs)
+            data.logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
-            plotData = applyFilter(fluxRatio,redshift,filters,filter_names,
-                                   path,bdfinal,logger)
+            plotData = applyFilter(data,fluxRatio,redshift,bdfinal)
             newPlot(plotData,fluxRatio,redshift,fluxIndex,shiftIndex)         
             shiftIndex += 1
         fluxIndex += 1
@@ -117,43 +119,41 @@ def makeFinal(fluxRatio, bulge, disk):
     return bdfinal
 
 # Filter application, generation of images and data cube
-def applyFilter(fluxRatio,redshift,filters,filter_names,path,bdfinal,logger):
+def applyFilter(data,fluxRatio,redshift,bdfinal):
     # initialize (pseudo-)random number generator
     random_seed = 1234567
     rng = galsim.BaseDeviate(random_seed)
     noiseSigma = 0.02
     avgFluxes, avgSigmas, stDevs = [], [], []
-    filter_name_list = [char.upper() for char in filter_names]
+    filter_name_list = [char.upper() for char in data.filter_names]
     gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
-    for filter_name in filter_names:
-        outpath = setOutput(filter_name,path)
-        avgFlux,avgSigma,stDev,successRate,images = makeCube(filters,
+    for filter_name in data.filter_names:
+        outpath = setOutput(filter_name,data.path)
+        avgFlux,avgSigma,stDev,successRate,images = makeCube(data.filters,
                                                              filter_name,
                                                              bdfinal,
                                                              gaussian_noise)
         avgFluxes.append(avgFlux), avgSigmas.append(avgSigma), stDevs.append(stDev)
         # Write the data cube
-        logger.debug('Created {}-band image'.format(filter_name))
+        data.logger.debug('Created {}-band image'.format(filter_name))
         fitsName = 'gal_{}_{}_{}.fits'.format(filter_name,fluxRatio,
                                               redshift)
         out_filename = os.path.join(outpath, fitsName)
         galsim.fits.writeCube(images, out_filename)
-        logger.debug('Wrote {}-band image to disk, '
-                     + 'bulge-to-total ratio = {}, '
-                     + 'redshift = {}'.format(filter_name, fluxRatio, 
-                                              redshift))
-        logger.info('Average flux for {}-band image: {}'.format(filter_name, avgFlux))
-        logger.info('Average Sigma = {}'.format(avgSigma))                
-        logger.info('Standard Deviation = {}'.format(stDev))                
-        logger.info('Success Rate = {}'.format(successRate))
+        data.logger.debug(('Wrote {}-band image to disk, '.format(filter_name))
+                          + ('bulge-to-total ratio = {}, '.format(fluxRatio))
+                          + ('redshift = {}'.format(redshift)))
+        data.logger.info('Average flux for {}-band image: {}'.format(filter_name, avgFlux))
+        data.logger.info('Average Sigma = {}'.format(avgSigma))                
+        data.logger.info('Standard Deviation = {}'.format(stDev))                
+        data.logger.info('Success Rate = {}'.format(successRate))
     plotData = zip(filter_name_list,avgFluxes,stDevs)
     return plotData
 
 def setOutput(filter_name,path):
     outputDir = 'output_{}'.format(filter_name)
-    if os.path.isdir(outputDir):
-        shutil.rmtree(outputDir)
-    os.mkdir(outputDir)
+    if not os.path.isdir(outputDir):
+        os.mkdir(outputDir)
     outDir = "output_{}/".format(filter_name)
     outpath = os.path.abspath(os.path.join(path, outDir))
     return outpath
@@ -214,6 +214,14 @@ def newPlot(plotData,fluxRatio,redshift,fluxIndex,shiftIndex):
                  linestyle = "none", barsabove = True, ecolor = "k",
                  label = "{} B/T, {} redshift".format(fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
+
+def colorPlot():
+    pass
+
+# -2.5*log base 10(Flux1/Flux2)
+# flux = sum(Image*model)/sum(model**2)
+# use parameter to pick between original and new model
+# make Zebra-friendly output file
 
 if __name__ == "__main__":
     main(sys.argv)
