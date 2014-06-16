@@ -25,6 +25,7 @@ def main(argv):
     logger.debug('Successfully read in SEDs')
     # read in the LSST filters
     data.filter_names = 'ugrizy'
+    clearOutputs(data.filter_names)
     data.filters = readInLSST(datapath,data.filter_names)
     logger.debug('Read in filters')
     makeGalaxies(data)
@@ -43,6 +44,12 @@ def readInSEDs(datapath):
         SEDs[SED_name] = SED.withFluxDensity(target_flux_density=1.0, 
                                              wavelength=500)
     return SEDs
+
+def clearOutputs(filter_names):
+    for filter_name in filter_names:
+        outputDir = 'output_{}'.format(filter_name)
+        if os.path.isdir(outputDir):    
+            shutil.rmtree(outputDir)
 
 def readInLSST(datapath, filter_names):
     filters = {}
