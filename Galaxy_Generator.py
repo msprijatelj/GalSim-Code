@@ -28,8 +28,8 @@ def main(argv):
     data.filter_name_list = [char.upper() for char in data.filter_names]
     data.color_name_list = []
     for i in xrange(1,len(data.filter_names)):
-        data.color_name_list.append("%s-%s" % (data.filter_names[i-1],
-                                    data.filter_names[i]))
+        data.color_name_list.append("%s-%s" % (data.filter_names[i-1].upper(),
+                                    data.filter_names[i].upper()))
     clearOutputs(data.filter_names)
     data.filters = readInLSST(datapath,data.filter_names)
     logger.debug('Read in filters')
@@ -76,8 +76,7 @@ def makeGalaxies(data):
     fluxMin, fluxMax = 0.0, 1.0
     redshiftMin, redshiftMax = 0.2, 1.0
     fluxIndex = 0
-    fig, ax = plt.subplots()
-    plt.xlim([-1,len(data.filter_names)])
+    #fig, ax = plt.subplots()
     for fluxRatio in numpy.linspace(fluxMin,fluxMax,fluxNum):   
         shiftIndex = 0
         for redshift in numpy.linspace(redshiftMin,redshiftMax,redshiftNum):           
@@ -85,18 +84,11 @@ def makeGalaxies(data):
             data.logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
             applyFilter(data,fluxRatio,redshift,bdfinal)
-            findColors(data)
             newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex)         
             shiftIndex += 1
         fluxIndex += 1
-    plt.xlabel('Band')
-    plt.ylabel('Magnitude of the Flux')
-    plt.ylim(0)
-    plt.title('Flux across bands at varied flux ratios and redshifts')
-    plt.grid()
-    lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
-    plt.show()
-    plt.savefig("Flux_Plot.png",bbox_extra_artists=(lgd,), bbox_inches='tight')
+    figure1Setup(data)
+    figure2Setup(data)
 
 # Individual galaxy generator functions
 def makeGalaxy(fluxRatio, redshift, SEDs):
@@ -137,15 +129,13 @@ def applyFilter(data,fluxRatio,redshift,bdfinal):
     rng = galsim.BaseDeviate(random_seed)
     noiseSigma = 0.02
     avgFluxes, avgSigmas, stDevs = [], [], []
+    avgColors, colorStDevs = [], []
+    oldFluxList = []
     gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
     for filter_name in data.filter_names:
-        outpath = setOutput(filter_name,data.path)
-        avgFlux,avgSigma,stDev,successRate,images = makeCube(data.filters,
-                                                             filter_name,
-                                                             bdfinal,
-                                                             gaussian_noise)
-        avgFluxes.append(avgFlux), avgSigmas.append(avgSigma), stDevs.append(stDev)
         # Write the data cube
+        outpath = setOutput(filter_name,data.path)
+        images = makeCube(data.filters,filter_name,bdfinal,gaussian_noise)
         data.logger.debug('Created {}-band image'.format(filter_name))
         fitsName = 'gal_{}_{}_{}.fits'.format(filter_name,fluxRatio,
                                               redshift)
@@ -154,11 +144,21 @@ def applyFilter(data,fluxRatio,redshift,bdfinal):
         data.logger.debug(('Wrote {}-band image to disk, '.format(filter_name))
                           + ('bulge-to-total ratio = {}, '.format(fluxRatio))
                           + ('redshift = {}'.format(redshift)))
+        fluxList, sigmaList, successRate = makeFluxList(images)
+        avgFlux,avgSigma,stDev = findAvgFlux(fluxList,sigmaList)
+        avgFluxes.append(avgFlux), avgSigmas.append(avgSigma), stDevs.append(stDev)
         data.logger.info('Average flux for {}-band image: {}'.format(filter_name, avgFlux))
         data.logger.info('Average Sigma = {}'.format(avgSigma))                
-        data.logger.info('Standard Deviation = {}'.format(stDev))                
+        data.logger.info('Standard Deviation = {}'.format(stDev))  
+        if oldFluxList != []:
+            avgColor, colorStDev = findColors(oldFluxList, fluxList)
+            avgColors.append(avgColor), colorStDevs.append(colorStDev)
+            data.logger.info('Color = {}'.format(avgColor))
+            data.logger.info('Color Standard Dev = {}'.format(colorStDev))
         data.logger.info('Success Rate = {}'.format(successRate))
+        oldFluxList = fluxList
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
+    data.avgColors, data.colorStDevs = avgColors, colorStDevs
 
 def setOutput(filter_name,path):
     outputDir = 'output_{}'.format(filter_name)
@@ -176,8 +176,7 @@ def makeCube(filters,filter_name,bdfinal,gaussian_noise):
     img = galsim.ImageF(64, 64, scale=pixel_scale)
     bdfinal.drawImage(filter_, image=img)
     images = makeCubeImages(img, gaussian_noise, noiseIterations)
-    avgFlux, avgSigma, stDev, successRate = findAvgFlux(images)
-    return avgFlux,avgSigma,stDev,successRate,images
+    return images
 
 def makeCubeImages(img, gaussian_noise, noiseIterations):
     images = []
@@ -188,7 +187,13 @@ def makeCubeImages(img, gaussian_noise, noiseIterations):
         images.append(newImg)
     return images
 
-def findAvgFlux(images):
+def findAvgFlux(fluxList, sigmaList):
+    avgFlux = numpy.mean(fluxList)
+    avgSigma = numpy.mean(sigmaList)
+    stDev = numpy.std(fluxList)
+    return avgFlux, avgSigma, stDev
+
+def makeFluxList(images):
     fluxList = []
     sigmaList = []
     successes = 0.0
@@ -200,55 +205,66 @@ def findAvgFlux(images):
             successes += 1
             fluxList.append(flux)
             sigmaList.append(sigma)
+        """
         else:
             fluxList.append(0)
             sigmaList.append(0)
-    avgFlux = numpy.mean(fluxList)
-    avgSigma = numpy.mean(sigmaList)
+        """
     successRate = successes/totalAttempts
-    stDev = numpy.std(fluxList)
-    return avgFlux, avgSigma, stDev, successRate
+    return fluxList, sigmaList, successRate
 
-def findColors(data):
-    data.colors = []
-    data.colorStDevs = []
-    for i in xrange(1,len(data.avgFluxes)):
-        newColor = -2.5*math.log10(data.avgFluxes[i-1]/data.avgFluxes[i])
-        newColorStDev = -2.5*math.log10(data.stDevs[i-1]/data.stDevs[i])
-        data.colors.append(newColor)
-        data.colorStDevs.append(newColorStDev)
+def findColors(oldFluxList, fluxList):
+    colorList = []
+    for i in xrange(min(len(oldFluxList),len(fluxList))):
+        newColor = -2.5*math.log10(oldFluxList[i]/fluxList[i])
+        colorList.append(newColor)
+    avgColor = numpy.mean(colorList)
+    colorStDev = numpy.std(colorList)
+    return avgColor, colorStDev
 
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
-    n_groups = len(data.avgFluxes)
-    filter_name_list = data.filter_name_list
-    avgFluxes = data.avgFluxes
-    stDevs = data.stDevs
     # colors = ["b","c","g","y","r","m"]
     colors = ["g","y","r","m"]
     shapes = ["o","^","s","p","h","D"]
-    index = range(n_groups)
-    plt.errorbar(index, avgFluxes, stDevs, None, 
-                 marker = "%s" % shapes[fluxIndex], 
-                 mfc = "%s" % colors[shiftIndex], capsize = 10,
-                 linestyle = "none", barsabove = True, ecolor = "k",
+    n_groups, m_groups = len(data.avgFluxes), len(data.avgColors)
+    plt.figure(1)
+    index, filter_name_list = range(n_groups), data.filter_name_list
+    avgFluxes, stDevs = data.avgFluxes, data.stDevs
+    plt.errorbar(index, avgFluxes, stDevs, None, barsabove = True, 
+                 marker = "%s" % shapes[fluxIndex], linestyle = "none", 
+                 mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
                  label = "{} B/T, {} redshift".format(fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
-    """
-    m_groups = len(data.colors)
-    color_name_list = data.color_name_list
-    colors = data.colors
-    colorStDevs = data.colorStDevs
-    # colors = ["b","c","g","y","r","m"]
-    colors = ["g","y","r","m"]
-    shapes = ["o","^","s","p","h","D"]
-    colorIndex = range(m_groups)
-    plt.errorbar(colorIndex, colors, colorStDevs, None, 
-                 marker = "%s" % shapes[fluxIndex], 
-                 mfc = "%s" % colors[shiftIndex], capsize = 10,
-                 linestyle = "none", barsabove = True, ecolor = "k",
+    plt.figure(2)
+    colorIndex, color_name_list = range(m_groups), data.color_name_list
+    avgColors, colorStDevs = data.avgColors, data.colorStDevs
+    plt.errorbar(colorIndex, avgColors, colorStDevs, None, barsabove = True,
+                 marker = "%s" % shapes[fluxIndex], linestyle = "none",
+                 mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
                  label = "{} B/T, {} redshift".format(fluxRatio,redshift))
     plt.xticks(colorIndex, color_name_list)
-    """
+
+def figure1Setup(data):
+    plt.figure(1)
+    plt.xlim([-1,len(data.filter_names)])
+    plt.xlabel('Band')
+    plt.ylabel('Magnitude of the Flux')
+    plt.title('Flux across bands at varied flux ratios and redshifts')
+    plt.grid()
+    lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+    plt.show()
+    plt.savefig("Flux_Plot.png",bbox_extra_artists=(lgd,), bbox_inches='tight')
+    
+def figure2Setup(data):
+    plt.figure(2)
+    plt.xlim([-1,len(data.color_name_list)])
+    plt.xlabel('Band')
+    plt.ylabel('Color')
+    plt.title('Color across bands at varied flux ratios and redshifts')
+    plt.grid()
+    lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+    plt.show()
+    plt.savefig("Color_Plot.png",bbox_extra_artists=(lgd,),bbox_inches='tight')
 
 # flux = sum(Image*model)/sum(model**2)
 # use parameter to pick between original and new model
