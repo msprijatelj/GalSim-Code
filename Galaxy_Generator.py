@@ -73,8 +73,8 @@ def makeGalaxies(data):
     data.logger.info('')
     data.logger.info('Starting to generate chromatic bulge+disk galaxy')
     # Iterations to complete
-    fluxNum = 2
-    redshiftNum = 2
+    fluxNum = 3
+    redshiftNum = 3
     # Other parameters
     fluxMin, fluxMax = 0.0, 1.0
     redshiftMin, redshiftMax = 0.2, 1.0
@@ -178,30 +178,41 @@ def setOutput(filter_name,path):
 def makeModels(data):
     images = makeCube(data, data.forcedFilter)
     models = []
+    bounds = galsim.BoundsI(1,64,1,64)
     for image in images:
-        gal_moments = image.FindAdaptiveMom()
+        gal_moments = galsim.hsm.FindAdaptiveMom(image)
         flux = gal_moments.moments_amp
         sigma = gal_moments.moments_sigma
         g1 = gal_moments.observed_shape.getG1()
-        g2 = gal_moments.observed_shape.getG2()
+        g2 = gal_moments.observed_shape.getG2()        
         newModel = galsim.Gaussian(flux = flux, sigma = sigma)
-        newModel.shear(g1=g1,g2=g2)
-        model = newModel.drawImage(scale = data.pixel_scale)
+        newModel = newModel.shear(g1=g1,g2=g2)
+        #model = galsim.Image(bounds, scale=data.pixel_scale)
+        model = galsim.Image(bounds, scale=data.pixel_scale*5)
+        newModel.drawImage(image = model)
         model.addNoise(data.gaussian_noise)
+        #print model.added_flux, newModel.getFlux()
+        file_name = os.path.join('output','test.fits')
+        model.write(file_name)
+        image_file_name = os.path.join('output','control.fits')
+        image.write(image_file_name)
         models.append(model)
+        #assert model.added_flux > 0.99*newModel.getFlux()
+        #print "good flux"
+        #assert True == False        
     return models
 
 def makeCube(data,filter_name):
     # initialize (pseudo-)random number generator
-    noiseIterations = 100
     filter_ = data.filters[filter_name]
     img = galsim.ImageF(data.imageSize, data.imageSize, scale=data.pixel_scale)
     data.bdfinal.drawImage(filter_, image=img)
-    images = makeCubeImages(img, data.gaussian_noise, noiseIterations)
+    images = makeCubeImages(img, data.gaussian_noise)
     return images
 
-def makeCubeImages(img, gaussian_noise, noiseIterations):
+def makeCubeImages(img, gaussian_noise):
     images = []
+    noiseIterations = 100
     # Create many images with different noises, compile into a cube
     for i in xrange(noiseIterations):
         newImg = img.copy()
@@ -235,9 +246,9 @@ def makeForcedFluxList(images,models):
         denominator = 0
         for x in xrange(1,images[attempt].bounds.xmax+1):
             for y in xrange(1,images[attempt].bounds.ymax+1):
-                numerator += (images[attempt].image(x,y))*(models[attempt].image(x,y))
-                denominator += (models[attempt].image(x,y))**2
-        flux = numerator/denominator
+                numerator += (images[attempt].at(x,y))*(models[attempt].at(x,y))
+                denominator += (models[attempt].at(x,y))**2
+        flux = (numerator/denominator)
         fluxList.append(flux)
     return fluxList
 
@@ -280,7 +291,11 @@ def figure1Setup(data):
     plt.xlim([-1,len(data.filter_names)])
     plt.xlabel('Band')
     plt.ylabel('Magnitude of the Flux')
-    plt.title('Flux across bands at varied flux ratios and redshifts')
+    if data.forced == False:
+        plt.title('Flux across bands at varied flux ratios and redshifts')
+    else:
+        plt.title('Flux across bands at varied flux ratios and redshifts; '
+                  +'forced fit at {}-band'.format(data.forcedFilter))
     plt.grid()
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
@@ -291,14 +306,16 @@ def figure2Setup(data):
     plt.xlim([-1,len(data.color_name_list)])
     plt.xlabel('Band')
     plt.ylabel('Color')
-    plt.title('Color across bands at varied flux ratios and redshifts')
+    if data.forced == False:
+        plt.title('Color across bands at varied flux ratios and redshifts')
+    else:
+        plt.title('Color across bands at varied flux ratios and redshifts; '
+                  +'forced fit at {}-band'.format(data.forcedFilter))
     plt.grid()
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
     plt.savefig("Color_Plot.png",bbox_extra_artists=(lgd,),bbox_inches='tight')
 
-# flux = sum(Image*model)/sum(model**2)
-# use parameter to pick between original and new model
 # make Zebra-friendly output file
 
 if __name__ == "__main__":
