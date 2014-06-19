@@ -12,8 +12,10 @@ import galsim
 def main(argv):
     class Struct(): pass
     data = Struct()
+    # Enable/disable forced photometry, select forced band
     data.forced = True
     data.forcedFilter = "r"
+    # Establish basic image parameters
     data.imageSize = 64
     data.pixel_scale = 0.2 # arcseconds
     # Where to find and output data
@@ -95,6 +97,7 @@ def makeGalaxies(data):
 
 # Individual galaxy generator functions
 def makeGalaxy(fluxRatio, redshift, SEDs):
+    # Construct the bulge, disk, and then the final profile from the two
     bulge, disk = makeBulge(redshift, SEDs), makeDisk(redshift, SEDs)  
     bdfinal = makeFinal(fluxRatio, bulge, disk)
     return bdfinal
@@ -127,14 +130,16 @@ def makeFinal(fluxRatio, bulge, disk):
 
 # Filter application, generation of images and data cube
 def applyFilter(data,fluxRatio,redshift):
-    # initialize (pseudo-)random number generator
+    # initialize (pseudo-)random number generator and noise
     random_seed = 1234567
     rng = galsim.BaseDeviate(random_seed)
     noiseSigma = 0.02
+    data.gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
+    # Initialize data storage lists
     avgFluxes, stDevs = [], []
     avgColors, colorStDevs = [], []
     oldFluxList = []
-    data.gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
+    # Create list of models if forced photometry is enabled
     if data.forced == True:
         models = makeModels(data)
     for filter_name in data.filter_names:
@@ -149,64 +154,71 @@ def applyFilter(data,fluxRatio,redshift):
         data.logger.debug(('Wrote {}-band image to disk, '.format(filter_name))
                           + ('bulge-to-total ratio = {}, '.format(fluxRatio))
                           + ('redshift = {}'.format(redshift)))
+        # Make lists of flux using the enabled method
         if data.forced == False:
             fluxList, successRate = makeFluxList(images)
         else:
             fluxList, successRate = makeForcedFluxList(images,models), 1.0
+        # Use the list of fluxes to find all other relevant data
         avgFlux,stDev = findAvgFlux(fluxList)
         avgFluxes.append(avgFlux), stDevs.append(stDev)
         data.logger.info('Average flux for {}-band image: {}'.format(filter_name, avgFlux))
         data.logger.info('Standard Deviation = {}'.format(stDev))  
+        # Calculate colors using existing flux data
         if oldFluxList != []:
             avgColor, colorStDev = findColors(oldFluxList, fluxList)
             avgColors.append(avgColor), colorStDevs.append(colorStDev)
             data.logger.info('Color = {}'.format(avgColor))
             data.logger.info('Color Standard Dev = {}'.format(colorStDev))
         data.logger.info('Success Rate = {}'.format(successRate))
+        # Update old flux list for next color calculation
         oldFluxList = fluxList
+    # embed acquired information in the data structure
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
     data.avgColors, data.colorStDevs = avgColors, colorStDevs
 
 def setOutput(filter_name,path):
+    # Check if output directory exists, and create it if it does not
     outputDir = 'output_{}'.format(filter_name)
     if not os.path.isdir(outputDir):
         os.mkdir(outputDir)
+    # Return target output path for file
     outDir = "output_{}/".format(filter_name)
     outpath = os.path.abspath(os.path.join(path, outDir))
     return outpath
 
 def makeModels(data):
+    # Make base images off which to model
     images = makeCube(data, data.forcedFilter)
+    # Establish relevant model list and image bounds
     models = []
-    bounds = galsim.BoundsI(1,64,1,64)
+    bounds = galsim.BoundsI(1,data.imageSize,1,data.imageSize)
     for image in images:
-        gal_moments = galsim.hsm.FindAdaptiveMom(image)
-        flux = gal_moments.moments_amp
-        sigma = gal_moments.moments_sigma
-        g1 = gal_moments.observed_shape.getG1()
-        g2 = gal_moments.observed_shape.getG2()        
-        newModel = galsim.Gaussian(flux = flux, sigma = sigma)
-        newModel = newModel.shear(g1=g1,g2=g2)
-        #model = galsim.Image(bounds, scale=data.pixel_scale)
-        model = galsim.Image(bounds, scale=data.pixel_scale*5)
-        newModel.drawImage(image = model)
-        model.addNoise(data.gaussian_noise)
-        #print model.added_flux, newModel.getFlux()
-        file_name = os.path.join('output','test.fits')
-        model.write(file_name)
-        image_file_name = os.path.join('output','control.fits')
-        image.write(image_file_name)
-        models.append(model)
-        #assert model.added_flux > 0.99*newModel.getFlux()
-        #print "good flux"
-        #assert True == False        
+        gal_moments = galsim.hsm.FindAdaptiveMom(image, strict = False)
+        # If .FindAdaptiveMom was successful, make the model image
+        if gal_moments.moments_status == 0:
+            flux = gal_moments.moments_amp
+            # Resize sigma based on pixel scale of the image
+            sigma = gal_moments.moments_sigma * data.pixel_scale
+            g1 = gal_moments.observed_shape.getG1()
+            g2 = gal_moments.observed_shape.getG2()
+            # Create new model using the Gaussian information above
+            newModel = galsim.Gaussian(flux = flux, sigma = sigma)
+            newModel = newModel.shear(g1=g1,g2=g2)
+            model = galsim.Image(bounds, scale=data.pixel_scale) 
+            newModel.drawImage(image = model)
+            model.addNoise(data.gaussian_noise)
+            file_name = os.path.join('output','test.fits')
+            model.write(file_name)
+            models.append(model)
     return models
 
 def makeCube(data,filter_name):
-    # initialize (pseudo-)random number generator
+    # Acquire filter, then apply to the base image
     filter_ = data.filters[filter_name]
     img = galsim.ImageF(data.imageSize, data.imageSize, scale=data.pixel_scale)
     data.bdfinal.drawImage(filter_, image=img)
+    # Create an image cube from the base image
     images = makeCubeImages(img, data.gaussian_noise)
     return images
 
@@ -232,7 +244,8 @@ def makeFluxList(images):
     for image in images:
         adaptiveMom = galsim.hsm.FindAdaptiveMom(image, strict = False)
         flux = adaptiveMom.moments_amp
-        if not (flux < 0):
+        # Record if successful
+        if adaptiveMom.moments_status == 0:
             successes += 1
             fluxList.append(flux)
     successRate = successes/totalAttempts
@@ -240,10 +253,11 @@ def makeFluxList(images):
 
 def makeForcedFluxList(images,models):
     fluxList = []
-    totalAttempts = len(images)
+    totalAttempts = min(len(images),len(models))
     for attempt in xrange(totalAttempts):
         numerator = 0
         denominator = 0
+        # Use flux = sum(I_ij * M_ij)/sum(M_ij ** 2) to find flux
         for x in xrange(1,images[attempt].bounds.xmax+1):
             for y in xrange(1,images[attempt].bounds.ymax+1):
                 numerator += (images[attempt].at(x,y))*(models[attempt].at(x,y))
@@ -255,7 +269,8 @@ def makeForcedFluxList(images,models):
 def findColors(oldFluxList, fluxList):
     colorList = []
     for i in xrange(min(len(oldFluxList),len(fluxList))):
-        if (oldFluxList[i] < 0 or fluxList[i] < 0) and (oldFluxList[i] > 0 or fluxList[i] > 0):
+        # Avoid having the logarithm of a negative number
+        if (oldFluxList[i]/fluxList[i] < 0):
             newColor = -2.5*math.log10(abs(oldFluxList[i]/fluxList[i]))
         else: 
             newColor = -2.5*math.log10(oldFluxList[i]/fluxList[i])
@@ -269,6 +284,7 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     colors = ["g","y","r","m"]
     shapes = ["o","^","s","p","h","D"]
     n_groups, m_groups = len(data.avgFluxes), len(data.avgColors)
+    # Start with the flux plot
     plt.figure(1)
     index, filter_name_list = range(n_groups), data.filter_name_list
     avgFluxes, stDevs = data.avgFluxes, data.stDevs
@@ -277,6 +293,7 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
                  mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
                  label = "{} B/T, {} redshift".format(fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
+    # Alternate to the color plot
     plt.figure(2)
     colorIndex, color_name_list = range(m_groups), data.color_name_list
     avgColors, colorStDevs = data.avgColors, data.colorStDevs
@@ -287,6 +304,7 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     plt.xticks(colorIndex, color_name_list)
 
 def figure1Setup(data):
+    # Swap focus to flux plot, add finishing touches to plot
     plt.figure(1)
     plt.xlim([-1,len(data.filter_names)])
     plt.xlabel('Band')
@@ -302,6 +320,7 @@ def figure1Setup(data):
     plt.savefig("Flux_Plot.png",bbox_extra_artists=(lgd,), bbox_inches='tight')
     
 def figure2Setup(data):
+    # Swap focus to color plot, add finishing touches to plot
     plt.figure(2)
     plt.xlim([-1,len(data.color_name_list)])
     plt.xlabel('Band')
