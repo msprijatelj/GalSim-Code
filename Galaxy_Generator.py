@@ -13,7 +13,7 @@ def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable/disable forced photometry, select forced band
-    data.forced = True
+    data.forced = False
     data.forcedFilter = "r"
     # Establish basic image parameters
     data.imageSize = 64
@@ -38,6 +38,8 @@ def main(argv):
     clearOutputs(data.filter_names)
     data.filters = readInLSST(datapath,data.filter_names)
     logger.debug('Read in filters')
+    if os.path.exists("gal_catalog.cat"):
+        os.remove("gal_catalog.cat")
     makeGalaxies(data)
     logger.info('You can display the output in ds9 with a command line that looks something like:')
     logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/gal_r.fits -green -scale limits'
@@ -176,6 +178,7 @@ def applyFilter(data,fluxRatio,redshift):
     # embed acquired information in the data structure
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
     data.avgColors, data.colorStDevs = avgColors, colorStDevs
+    makeCatalog(data, redshift)
 
 def setOutput(filter_name,path):
     # Check if output directory exists, and create it if it does not
@@ -269,11 +272,7 @@ def makeForcedFluxList(images,models):
 def findColors(oldFluxList, fluxList):
     colorList = []
     for i in xrange(min(len(oldFluxList),len(fluxList))):
-        # Avoid having the logarithm of a negative number
-        if (oldFluxList[i]/fluxList[i] < 0):
-            newColor = -2.5*math.log10(abs(oldFluxList[i]/fluxList[i]))
-        else: 
-            newColor = -2.5*math.log10(oldFluxList[i]/fluxList[i])
+        newColor = -2.5*math.log10(oldFluxList[i]/fluxList[i])
         colorList.append(newColor)
     avgColor = numpy.mean(colorList)
     colorStDev = numpy.std(colorList)
@@ -335,7 +334,42 @@ def figure2Setup(data):
     plt.show()
     plt.savefig("Color_Plot.png",bbox_extra_artists=(lgd,),bbox_inches='tight')
 
+def convertToABM(data, fluxList):
+    magList = []
+    sol_ABM = 4.75
+    sol_lum = 3.846e26 # Watts
+    area = data.pixel_scale ** 2
+    for flux in fluxList:
+        gal_lum = area * flux
+        gal_ABM = sol_ABM - 2.5*math.log10(gal_lum/sol_lum)
+        magList.append(gal_ABM)
+    return magList
+
 # make Zebra-friendly output file
+# writeFile taken from 15-112 class notes:
+# http://www.kosbie.net/cmu/spring-13/15-112/handouts/fileWebIO.py
+def writeFile(filename, contents, mode="wt"):
+    fout = None
+    try:
+        fout = open(filename, mode)
+        fout.write(contents)
+    finally:
+        if (fout != None): fout.close()
+    return True
+
+def makeCatalog(data, redshift):
+    avgFluxes, stDevs = data.avgFluxes, data.stDevs
+    fluxData = zip(avgFluxes, stDevs)
+    contents = ""
+    for i in xrange(len(fluxData)):
+        for j in xrange(len(fluxData[0])):
+            contents += (str(fluxData[i][j]) + " ")
+    contents += (str(redshift) + " \n")
+    if not os.path.exists("gal_catalog.cat"):
+        writeFile("gal_catalog.cat", contents)
+    else:
+        writeFile("gal_catalog.cat", contents, "a")
+
 
 if __name__ == "__main__":
     main(sys.argv)
