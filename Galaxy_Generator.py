@@ -2,6 +2,7 @@
 import sys
 import os
 import shutil
+import copy
 import math
 import matplotlib.pyplot as plt
 import numpy
@@ -13,11 +14,15 @@ def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable/disable forced photometry, select forced band
-    data.forced = False
+    data.forced = True
     data.forcedFilter = "r"
+    data.refBand = "r"
+    data.refMag = 22
     # Establish basic image parameters
     data.imageSize = 64
     data.pixel_scale = 0.2 # arcseconds
+    data.noiseIterations = 100
+
     # Where to find and output data
     data.path, filename = os.path.split(__file__)
     datapath = os.path.abspath(os.path.join(data.path, "data/"))
@@ -137,23 +142,26 @@ def applyFilter(data,fluxRatio,redshift):
     rng = galsim.BaseDeviate(random_seed)
     noiseSigma = 0.02
     data.gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
+    filter_names = data.filter_names
     # Initialize data storage lists
     avgFluxes, stDevs = [], []
     avgColors, colorStDevs = [], []
+    colorDict = {}
+    avgMags, magStDevs = [], []
     oldFluxList = []
     # Create list of models if forced photometry is enabled
     if data.forced == True:
         models = makeModels(data)
-    for filter_name in data.filter_names:
+    for i in xrange(len(filter_names)):
         # Write the data cube
-        outpath = setOutput(filter_name,data.path)
-        images = makeCube(data,filter_name)
-        data.logger.debug('Created {}-band image'.format(filter_name))
-        fitsName = 'gal_{}_{}_{}.fits'.format(filter_name,fluxRatio,
+        outpath = setOutput(filter_names[i],data.path)
+        images = makeCube(data,filter_names[i])
+        data.logger.debug('Created {}-band image'.format(filter_names[i]))
+        fitsName = 'gal_{}_{}_{}.fits'.format(filter_names[i],fluxRatio,
                                               redshift)
         out_filename = os.path.join(outpath, fitsName)
         galsim.fits.writeCube(images, out_filename)
-        data.logger.debug(('Wrote {}-band image to disk, '.format(filter_name))
+        data.logger.debug(('Wrote {}-band image to disk, '.format(filter_names[i]))
                           + ('bulge-to-total ratio = {}, '.format(fluxRatio))
                           + ('redshift = {}'.format(redshift)))
         # Make lists of flux using the enabled method
@@ -162,22 +170,28 @@ def applyFilter(data,fluxRatio,redshift):
         else:
             fluxList, successRate = makeForcedFluxList(images,models), 1.0
         # Use the list of fluxes to find all other relevant data
-        avgFlux,stDev = findAvgFlux(fluxList)
+        avgFlux,stDev = findAvgStDev(fluxList)
         avgFluxes.append(avgFlux), stDevs.append(stDev)
-        data.logger.info('Average flux for {}-band image: {}'.format(filter_name, avgFlux))
+        data.logger.info('Average flux for {}-band image: {}'.format(filter_names[i], avgFlux))
         data.logger.info('Standard Deviation = {}'.format(stDev))  
         # Calculate colors using existing flux data
         if oldFluxList != []:
-            avgColor, colorStDev = findColors(oldFluxList, fluxList)
+            colorList = findColors(oldFluxList, fluxList)
+            avgColor, colorStDev = findAvgStDev(colorList)
             avgColors.append(avgColor), colorStDevs.append(colorStDev)
             data.logger.info('Color = {}'.format(avgColor))
             data.logger.info('Color Standard Dev = {}'.format(colorStDev))
+            key = "%s%s" % (filter_names[i-1], filter_names[i])
+            colorDict[key] = colorList
         data.logger.info('Success Rate = {}'.format(successRate))
         # Update old flux list for next color calculation
         oldFluxList = fluxList
     # embed acquired information in the data structure
+    magLists = makeMagLists(data,colorDict)
+    avgMags,magStDevs = listAvgStDev(magLists)
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
     data.avgColors, data.colorStDevs = avgColors, colorStDevs
+    data.avgMags, data.magStDevs = avgMags, magStDevs
     makeCatalog(data, redshift)
 
 def setOutput(filter_name,path):
@@ -222,12 +236,13 @@ def makeCube(data,filter_name):
     img = galsim.ImageF(data.imageSize, data.imageSize, scale=data.pixel_scale)
     data.bdfinal.drawImage(filter_, image=img)
     # Create an image cube from the base image
-    images = makeCubeImages(img, data.gaussian_noise)
+    images = makeCubeImages(data, img)
     return images
 
-def makeCubeImages(img, gaussian_noise):
+def makeCubeImages(data, img):
     images = []
-    noiseIterations = 100
+    gaussian_noise = data.gaussian_noise
+    noiseIterations = data.noiseIterations
     # Create many images with different noises, compile into a cube
     for i in xrange(noiseIterations):
         newImg = img.copy()
@@ -235,11 +250,28 @@ def makeCubeImages(img, gaussian_noise):
         images.append(newImg)
     return images
 
-def findAvgFlux(fluxList):
-    avgFlux = numpy.mean(fluxList)
-    stDev = numpy.std(fluxList)
-    return avgFlux, stDev
+def findAvgStDev(inputList):
+    calcList = []
+    # Remove all None-type objects
+    for i in xrange(len(inputList)):
+        if inputList[i] != None: calcList.append(inputList[i])
+    avg = numpy.mean(calcList)
+    stDev = numpy.std(calcList)
+    return avg, stDev
 
+def listAvgStDev(inputLists):
+    meanList, stDevList = [], []
+    calcLists = copy.deepcopy(inputLists)
+    for i in xrange(len(calcLists)):
+        tempList = []
+        for j in xrange(len(calcLists[i])):
+            if calcLists[i][j] != None: tempList.append(calcLists[i][j])
+        calcLists[i] = copy.deepcopy(tempList)
+    for i in xrange(len(inputLists)):
+        meanList.append(numpy.mean(calcLists[i]))
+        stDevList.append(numpy.std(calcLists[i]))
+    return meanList, stDevList
+        
 def makeFluxList(images):
     fluxList = []
     successes = 0.0
@@ -251,6 +283,8 @@ def makeFluxList(images):
         if adaptiveMom.moments_status == 0:
             successes += 1
             fluxList.append(flux)
+        else:
+            fluxList.append(None)
     successRate = successes/totalAttempts
     return fluxList, successRate
 
@@ -263,7 +297,7 @@ def makeForcedFluxList(images,models):
         # Use flux = sum(I_ij * M_ij)/sum(M_ij ** 2) to find flux
         for x in xrange(1,images[attempt].bounds.xmax+1):
             for y in xrange(1,images[attempt].bounds.ymax+1):
-                numerator += (images[attempt].at(x,y))*(models[attempt].at(x,y))
+                numerator+=(images[attempt].at(x,y))*(models[attempt].at(x,y))
                 denominator += (models[attempt].at(x,y))**2
         flux = (numerator/denominator)
         fluxList.append(flux)
@@ -272,11 +306,42 @@ def makeForcedFluxList(images,models):
 def findColors(oldFluxList, fluxList):
     colorList = []
     for i in xrange(min(len(oldFluxList),len(fluxList))):
-        newColor = -2.5*math.log10(oldFluxList[i]/fluxList[i])
-        colorList.append(newColor)
-    avgColor = numpy.mean(colorList)
-    colorStDev = numpy.std(colorList)
-    return avgColor, colorStDev
+        if ((oldFluxList[i] == None) or (fluxList[i] == None)):
+            colorList.append(None)
+        else:
+            newColor = -2.5*math.log10(oldFluxList[i]/fluxList[i])
+            colorList.append(newColor)
+    return colorList
+
+def makeMagLists(data, colorDict):
+    filter_names = data.filter_names
+    startIndex = filter_names.index(data.refBand)
+    refMag = data.refMag
+    magLists = [[] for char in filter_names]
+    magLists[startIndex] = [refMag for i in xrange(data.noiseIterations)]
+    if startIndex > 0:
+        for i in xrange(startIndex, 0 , -1):
+            key = "%s%s" % (filter_names[i-1],filter_names[i])
+            length = min(len(colorDict[key]), len(magLists[i]))
+            newMags = []
+            for k in xrange(length):
+                if (colorDict[key][k] == None or magLists[i][k] == None):
+                    newMags.append(None)
+                else:
+                    newMags.append(colorDict[key][k]+magLists[i][k])
+            magLists[i-1] = newMags
+    if startIndex < (len(filter_names) - 1):
+        for i in xrange(startIndex, len(filter_names)-1):
+            key = "%s%s" % (filter_names[i],filter_names[i+1])
+            length = min(len(colorDict[key]), len(magLists[i]))
+            newMags = []
+            for k in xrange(length):
+                if (colorDict[key][k] == None or magLists[i][k] == None):
+                    newMags.append(None)
+                else:
+                    newMags.append(magLists[i][k]-colorDict[key][k])
+            magLists[i+1] = newMags
+    return magLists
 
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     # colors = ["b","c","g","y","r","m"]
@@ -334,17 +399,6 @@ def figure2Setup(data):
     plt.show()
     plt.savefig("Color_Plot.png",bbox_extra_artists=(lgd,),bbox_inches='tight')
 
-def convertToABM(data, fluxList):
-    magList = []
-    sol_ABM = 4.75
-    sol_lum = 3.846e26 # Watts
-    area = data.pixel_scale ** 2
-    for flux in fluxList:
-        gal_lum = area * flux
-        gal_ABM = sol_ABM - 2.5*math.log10(gal_lum/sol_lum)
-        magList.append(gal_ABM)
-    return magList
-
 # make Zebra-friendly output file
 # writeFile taken from 15-112 class notes:
 # http://www.kosbie.net/cmu/spring-13/15-112/handouts/fileWebIO.py
@@ -358,13 +412,13 @@ def writeFile(filename, contents, mode="wt"):
     return True
 
 def makeCatalog(data, redshift):
-    avgFluxes, stDevs = data.avgFluxes, data.stDevs
-    fluxData = zip(avgFluxes, stDevs)
+    avgMags, magStDevs = data.avgMags, data.magStDevs
+    fluxData = zip(avgMags, magStDevs)
     contents = ""
     for i in xrange(len(fluxData)):
         for j in xrange(len(fluxData[0])):
             contents += (str(fluxData[i][j]) + " ")
-    contents += (str(redshift) + " \n")
+    contents += ("\n")
     if not os.path.exists("gal_catalog.cat"):
         writeFile("gal_catalog.cat", contents)
     else:
