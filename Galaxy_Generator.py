@@ -17,7 +17,7 @@ def main(argv):
     data.forced = True
     data.forcedFilter = "r"
     data.refBand = "r"
-    data.refMag = 22
+    data.refMag = 20
     # Establish basic image parameters
     data.imageSize = 64
     data.pixel_scale = 0.2 # arcseconds
@@ -101,6 +101,7 @@ def makeGalaxies(data):
         fluxIndex += 1
     figure1Setup(data)
     figure2Setup(data)
+    figure3Setup(data)
 
 # Individual galaxy generator functions
 def makeGalaxy(fluxRatio, redshift, SEDs):
@@ -186,8 +187,9 @@ def applyFilter(data,fluxRatio,redshift):
         data.logger.info('Success Rate = {}'.format(successRate))
         # Update old flux list for next color calculation
         oldFluxList = fluxList
-    # embed acquired information in the data structure
+    # Using accumulated color lists, generate the magnitudes
     magLists = makeMagLists(data,colorDict)
+    # embed acquired information in the data structure
     avgMags,magStDevs = listAvgStDev(magLists)
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
     data.avgColors, data.colorStDevs = avgColors, colorStDevs
@@ -316,9 +318,11 @@ def findColors(oldFluxList, fluxList):
 def makeMagLists(data, colorDict):
     filter_names = data.filter_names
     startIndex = filter_names.index(data.refBand)
-    refMag = data.refMag
+    # Generate empty list of magnitudes, fill with given magnitude to start
     magLists = [[] for char in filter_names]
-    magLists[startIndex] = [refMag for i in xrange(data.noiseIterations)]
+    magLists[startIndex] = [data.refMag for i in xrange(data.noiseIterations)]
+    # color = -2.5*log10(flux1/flux2) = mag1 - mag2
+    # Find the magnitudes for earlier bands
     if startIndex > 0:
         for i in xrange(startIndex, 0 , -1):
             key = "%s%s" % (filter_names[i-1],filter_names[i])
@@ -326,10 +330,12 @@ def makeMagLists(data, colorDict):
             newMags = []
             for k in xrange(length):
                 if (colorDict[key][k] == None or magLists[i][k] == None):
+                    # Retain list length, but do not record meaningful data
                     newMags.append(None)
                 else:
                     newMags.append(colorDict[key][k]+magLists[i][k])
             magLists[i-1] = newMags
+    # Find the magnitudes for later bands
     if startIndex < (len(filter_names) - 1):
         for i in xrange(startIndex, len(filter_names)-1):
             key = "%s%s" % (filter_names[i],filter_names[i+1])
@@ -337,6 +343,7 @@ def makeMagLists(data, colorDict):
             newMags = []
             for k in xrange(length):
                 if (colorDict[key][k] == None or magLists[i][k] == None):
+                    # Retain list length, but do not record meaningful data
                     newMags.append(None)
                 else:
                     newMags.append(magLists[i][k]-colorDict[key][k])
@@ -366,6 +373,15 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
                  mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
                  label = "{} B/T, {} redshift".format(fluxRatio,redshift))
     plt.xticks(colorIndex, color_name_list)
+    # Alternate to the magnitude plot
+    plt.figure(3)
+    index, filter_name_list = range(n_groups), data.filter_name_list
+    avgMags, magStDevs = data.avgMags, data.magStDevs
+    plt.errorbar(index, avgMags, magStDevs, None, barsabove = True, 
+                 marker = "%s" % shapes[fluxIndex], linestyle = "none", 
+                 mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
+                 label = "{} B/T, {} redshift".format(fluxRatio,redshift))
+    plt.xticks(index, filter_name_list)
 
 def figure1Setup(data):
     # Swap focus to flux plot, add finishing touches to plot
@@ -373,15 +389,17 @@ def figure1Setup(data):
     plt.xlim([-1,len(data.filter_names)])
     plt.xlabel('Band')
     plt.ylabel('Magnitude of the Flux')
-    if data.forced == False:
-        plt.title('Flux across bands at varied flux ratios and redshifts')
-    else:
-        plt.title('Flux across bands at varied flux ratios and redshifts; '
-                  +'forced fit at {}-band'.format(data.forcedFilter))
     plt.grid()
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
-    plt.savefig("Flux_Plot.png",bbox_extra_artists=(lgd,), bbox_inches='tight')
+    if data.forced == False:
+        plt.title('Flux across bands at varied flux ratios and redshifts')
+        plt.savefig("Flux_Plot.png",bbox_extra_artists=(lgd,),bbox_inches='tight')
+    else:
+        plt.title('Flux across bands at varied flux ratios and redshifts; '
+                  +'forced fit at {}-band'.format(data.forcedFilter))
+        saveName = "Flux_Plot-Forced_{}.png".format(data.forcedFilter)
+        plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
     
 def figure2Setup(data):
     # Swap focus to color plot, add finishing touches to plot
@@ -389,15 +407,39 @@ def figure2Setup(data):
     plt.xlim([-1,len(data.color_name_list)])
     plt.xlabel('Band')
     plt.ylabel('Color')
-    if data.forced == False:
-        plt.title('Color across bands at varied flux ratios and redshifts')
-    else:
-        plt.title('Color across bands at varied flux ratios and redshifts; '
-                  +'forced fit at {}-band'.format(data.forcedFilter))
     plt.grid()
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
-    plt.savefig("Color_Plot.png",bbox_extra_artists=(lgd,),bbox_inches='tight')
+    if data.forced == False:
+        plt.title('Color across bands at varied flux ratios and redshifts')
+        plt.savefig("Color_Plot.png",bbox_extra_artists=(lgd,),bbox_inches='tight')
+
+    else:
+        plt.title('Color across bands at varied flux ratios and redshifts; '
+                  +'forced fit at {}-band'.format(data.forcedFilter))
+        saveName = "Color_Plot-Forced_{}.png".format(data.forcedFilter)
+        plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
+
+def figure3Setup(data):
+    # Swap focus to color plot, add finishing touches to plot
+    plt.figure(3)
+    plt.xlim([-1,len(data.filter_names)])
+    plt.xlabel('Band')
+    plt.ylabel('Magnitude')
+    plt.grid()
+    lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+    plt.show()
+    if data.forced == False:
+        plt.title('Mag across bands at varied flux ratios and redshifts,'
+                  + ' base mag {} {}'.format(data.refBand, data.refMag))
+        saveName = "Mag_Plot_{}_{}.png".format(data.refBand,data.refMag)
+        plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
+    else:
+        plt.title('Mag across bands at varied flux ratios and redshifts,'
+                  + ' base mag {} {}; '.format(data.refBand, data.refMag)
+                  +'forced fit at {}-band'.format(data.forcedFilter))
+        saveName = "Mag_Plot_{}_{}-Forced_{}.png".format(data.refBand,data.refMag, data.forcedFilter)
+        plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
 
 # make Zebra-friendly output file
 # writeFile taken from 15-112 class notes:
