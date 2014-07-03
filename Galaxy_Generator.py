@@ -14,7 +14,7 @@ def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable/disable forced photometry, select forced band
-    data.forced = True
+    data.forced = False
     data.forcedFilter = "r"
     data.refBand = "r"
     data.refMag = 20
@@ -74,6 +74,7 @@ def readInLSST(datapath, filter_names):
         filter_filename = os.path.join(datapath, 
                                        'LSST_{}.dat'.format(filter_name))
         filters[filter_name] = galsim.Bandpass(filter_filename)
+        filters[filter_name] = filters[filter_name].withZeropoint("AB", effective_diameter=640.0, exptime=15.0)
         filters[filter_name] = filters[filter_name].thin(rel_err=1e-4)
     return filters
 
@@ -82,7 +83,7 @@ def makeGalaxies(data):
     data.logger.info('')
     data.logger.info('Starting to generate chromatic bulge+disk galaxy')
     # Iterations to complete
-    fluxNum = 3
+    fluxNum = 2
     redshiftNum = 3
     # Other parameters
     fluxMin, fluxMax = 0.0, 1.0
@@ -169,7 +170,7 @@ def applyFilter(data,fluxRatio,redshift):
         if data.forced == False:
             fluxList, successRate = makeFluxList(images)
         else:
-            fluxList, successRate = makeForcedFluxList(images,models), 1.0
+            fluxList, successRate = makeForcedFluxList(images,models), None
         # Use the list of fluxes to find all other relevant data
         avgFlux,stDev = findAvgStDev(fluxList)
         avgFluxes.append(avgFlux), stDevs.append(stDev)
@@ -268,10 +269,8 @@ def listAvgStDev(inputLists):
         tempList = []
         for j in xrange(len(calcLists[i])):
             if calcLists[i][j] != None: tempList.append(calcLists[i][j])
-        calcLists[i] = copy.deepcopy(tempList)
-    for i in xrange(len(inputLists)):
-        meanList.append(numpy.mean(calcLists[i]))
-        stDevList.append(numpy.std(calcLists[i]))
+        meanList.append(numpy.mean(tempList))
+        stDevList.append(numpy.std(tempList))
     return meanList, stDevList
         
 def makeFluxList(images):
@@ -388,16 +387,17 @@ def figure1Setup(data):
     plt.figure(1)
     plt.xlim([-1,len(data.filter_names)])
     plt.xlabel('Band')
-    plt.ylabel('Magnitude of the Flux')
     plt.grid()
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
     if data.forced == False:
         plt.title('Flux across bands at varied flux ratios and redshifts')
+        plt.ylabel('Magnitude of the Flux (Arbitrary Units)')
         plt.savefig("Flux_Plot.png",bbox_extra_artists=(lgd,),bbox_inches='tight')
     else:
         plt.title('Flux across bands at varied flux ratios and redshifts; '
                   +'forced fit at {}-band'.format(data.forcedFilter))
+        plt.ylabel('Ratio of Flux in band to Flux in {}-band'.format(data.forcedFilter))
         saveName = "Flux_Plot-Forced_{}.png".format(data.forcedFilter)
         plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
     
@@ -406,7 +406,7 @@ def figure2Setup(data):
     plt.figure(2)
     plt.xlim([-1,len(data.color_name_list)])
     plt.xlabel('Band')
-    plt.ylabel('Color')
+    plt.ylabel('AB Color')
     plt.grid()
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
@@ -425,7 +425,7 @@ def figure3Setup(data):
     plt.figure(3)
     plt.xlim([-1,len(data.filter_names)])
     plt.xlabel('Band')
-    plt.ylabel('Magnitude')
+    plt.ylabel('AB Magnitude')
     plt.grid()
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
