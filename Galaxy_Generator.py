@@ -325,6 +325,51 @@ def makeColorList(oldMagList, magList):
         else: colorList.append(None)
     return colorList
 
+def findColorsDirect(oldFluxList, fluxList):
+    colorList = []
+    for i in xrange(min(len(oldFluxList),len(fluxList))):
+        if ((oldFluxList[i] == None) or (fluxList[i] == None)):
+            colorList.append(None)
+        else:
+            newColor = -2.5*math.log10(oldFluxList[i]/fluxList[i])
+            colorList.append(newColor)
+    return colorList
+
+def makeMagListsIndirect(data, colorDict):
+    filter_names = data.filter_names
+    startIndex = filter_names.index(data.refBand)
+    # Generate empty list of magnitudes, fill with given magnitude to start
+    magLists = [[] for char in filter_names]
+    magLists[startIndex] = [data.refMag for i in xrange(data.noiseIterations)]
+    # color = -2.5*log10(flux1/flux2) = mag1 - mag2
+    # Find the magnitudes for earlier bands
+    if startIndex > 0:
+        for i in xrange(startIndex, 0 , -1):
+            key = "%s%s" % (filter_names[i-1],filter_names[i])
+            length = min(len(colorDict[key]), len(magLists[i]))
+            newMags = []
+            for k in xrange(length):
+                if (colorDict[key][k] == None or magLists[i][k] == None):
+                    # Retain list length, but do not record meaningful data
+                    newMags.append(None)
+                else:
+                    newMags.append(colorDict[key][k]+magLists[i][k])
+            magLists[i-1] = newMags
+    # Find the magnitudes for later bands
+    if startIndex < (len(filter_names) - 1):
+        for i in xrange(startIndex, len(filter_names)-1):
+            key = "%s%s" % (filter_names[i],filter_names[i+1])
+            length = min(len(colorDict[key]), len(magLists[i]))
+            newMags = []
+            for k in xrange(length):
+                if (colorDict[key][k] == None or magLists[i][k] == None):
+                    # Retain list length, but do not record meaningful data
+                    newMags.append(None)
+                else:
+                    newMags.append(magLists[i][k]-colorDict[key][k])
+            magLists[i+1] = newMags
+    return magLists
+
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     # colors = ["b","c","g","y","r","m"]
     colors = ["g","y","r","m"]
