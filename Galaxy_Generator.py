@@ -467,5 +467,21 @@ def makeCatalog(data, redshift):
         writeFile("gal_catalog.cat", contents, "a")
 
 
+def getNewMagList(data, fluxList, filter_name):
+    zeroPoint = data.filters[filter_name].zeropoint
+    magList = []
+    for flux in fluxList:
+        if flux == None:  magList.append(None)
+        else:
+            magList.append(-2.5 * numpy.log10(flux) + zeroPoint)
+    return magList
+    
+def getNewColorList(data, oldMagList, magList):
+    colorList = []
+    length = min(len(oldMagList),len(magList))
+    for i in xrange(length):
+        colorList.append(oldMagList[i] - magList[i])
+    return colorList
+
 if __name__ == "__main__":
     main(sys.argv)
