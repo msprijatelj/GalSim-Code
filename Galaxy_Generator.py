@@ -14,7 +14,7 @@ def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable/disable forced photometry, select forced band
-    data.forced = True
+    data.forced = False
     data.forcedFilter = "r"
     data.refBand = "r"
     data.refMag = 20
@@ -195,9 +195,14 @@ def applyFilter(data,fluxRatio,redshift):
         oldMagList = magList
     # Using accumulated color lists, generate the magnitudes
     # embed acquired information in the data structure
+    otherMags = makeMagListsIndirect(data, colorDict)
+    avgOtherMags, otherMagStDevs = listAvgStDev(otherMags)
+    print avgOtherMags, otherMagStDevs
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
     data.avgColors, data.colorStDevs = avgColors, colorStDevs
-    data.avgMags, data.magStDevs = avgMags, magStDevs
+    #data.avgMags, data.magStDevs = avgMags, magStDevs
+    data.avgMags, data.magStDevs = avgOtherMags, otherMagStDevs
+    #data.avgOtherMags, data.otherMagStDevs = avgOtherMags, otherMagStDevs
     makeCatalog(data, redshift)
 
 def setOutput(filter_name,path):
