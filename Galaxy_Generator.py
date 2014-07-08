@@ -4,9 +4,11 @@ import os
 import shutil
 import copy
 import math
+import string
 import matplotlib.pyplot as plt
 import numpy
 import logging
+import subprocess
 import galsim
 
 # Top-level function
@@ -14,7 +16,7 @@ def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable/disable forced photometry, select forced band
-    data.forced = False
+    data.forced = True
     data.forcedFilter = "r"
     data.refBand = "r"
     data.refMag = 20
@@ -22,10 +24,11 @@ def main(argv):
     data.imageSize = 64
     data.pixel_scale = 0.2 # arcseconds
     data.noiseIterations = 100
-
     # Where to find and output data
     data.path, filename = os.path.split(__file__)
     datapath = os.path.abspath(os.path.join(data.path, "data/"))
+    data.zebrapath = "/Users/michaelprijatelj/Research/zebra-1.10/"
+    data.catpath = data.zebrapath + "examples/ML_notImproved/gal_catalog.cat"
     # In non-script code, use getLogger(__name__) at module scope instead.
     logging.basicConfig(format="%(message)s", level=logging.INFO, 
                         stream=sys.stdout)
@@ -43,8 +46,8 @@ def main(argv):
     clearOutputs(data.filter_names)
     data.filters = readInLSST(datapath,data.filter_names)
     logger.debug('Read in filters')
-    if os.path.exists("gal_catalog.cat"):
-        os.remove("gal_catalog.cat")
+    if os.path.exists(data.catpath):
+        os.remove(data.catpath)
     makeGalaxies(data)
     logger.info('You can display the output in ds9 with a command line that looks something like:')
     logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/gal_r.fits -green -scale limits'
@@ -70,12 +73,11 @@ def clearOutputs(filter_names):
 
 def readInLSST(datapath, filter_names):
     filters = {}
-    for filter_name in filter_names:
-        filter_filename = os.path.join(datapath, 
-                                       'LSST_{}.dat'.format(filter_name))
-        filters[filter_name] = galsim.Bandpass(filter_filename)
-        filters[filter_name] = filters[filter_name].withZeropoint("AB", effective_diameter=640.0, exptime=15.0)
-        filters[filter_name] = filters[filter_name].thin(rel_err=1e-4)
+    for name in filter_names:
+        filename = os.path.join(datapath, 'LSST_{}.dat'.format(name))
+        filters[name] = galsim.Bandpass(filename)
+        filters[name] = filters[name].withZeropoint("AB", 640.0, 15.0)
+        filters[name] = filters[name].thin(rel_err=1e-4)
     return filters
 
 # Galaxy generating functions
@@ -103,6 +105,8 @@ def makeGalaxies(data):
     figure1Setup(data)
     figure2Setup(data)
     figure3Setup(data)
+    redshifts = runZebraScript(data)
+    print redshifts
 
 # Individual galaxy generator functions
 def makeGalaxy(fluxRatio, redshift, SEDs):
@@ -197,11 +201,10 @@ def applyFilter(data,fluxRatio,redshift):
     # embed acquired information in the data structure
     otherMags = makeMagListsIndirect(data, colorDict)
     avgOtherMags, otherMagStDevs = listAvgStDev(otherMags)
-    print avgOtherMags, otherMagStDevs
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
     data.avgColors, data.colorStDevs = avgColors, colorStDevs
-    #data.avgMags, data.magStDevs = avgMags, magStDevs
-    data.avgMags, data.magStDevs = avgOtherMags, otherMagStDevs
+    data.avgMags, data.magStDevs = avgMags, magStDevs
+    #data.avgMags, data.magStDevs = avgOtherMags, otherMagStDevs
     #data.avgOtherMags, data.otherMagStDevs = avgOtherMags, otherMagStDevs
     makeCatalog(data, redshift)
 
@@ -313,6 +316,7 @@ def makeForcedFluxList(images,models):
     return fluxList
     
 def makeMagList(data, fluxList, filter_name):
+    # Magnitude = zero point magnitude - 2.5 * log10(flux)
     zeropoint_mag = data.filters[filter_name].zeropoint
     magList = []
     for flux in fluxList:
@@ -322,6 +326,7 @@ def makeMagList(data, fluxList, filter_name):
     return magList
     
 def makeColorList(oldMagList, magList):
+    # Use differences between magnitudes to calculate color
     colorList = []
     length = min(len(oldMagList),len(magList))
     for i in xrange(length):
@@ -331,6 +336,7 @@ def makeColorList(oldMagList, magList):
     return colorList
 
 def findColorsDirect(oldFluxList, fluxList):
+    # Old color-calculating function
     colorList = []
     for i in xrange(min(len(oldFluxList),len(fluxList))):
         if ((oldFluxList[i] == None) or (fluxList[i] == None)):
@@ -341,6 +347,7 @@ def findColorsDirect(oldFluxList, fluxList):
     return colorList
 
 def makeMagListsIndirect(data, colorDict):
+    # Old magnitude-calculating function
     filter_names = data.filter_names
     startIndex = filter_names.index(data.refBand)
     # Generate empty list of magnitudes, fill with given magnitude to start
@@ -464,12 +471,24 @@ def figure3Setup(data):
         plt.title('Mag across bands at varied flux ratios and redshifts,'
                   + ' base mag {} {}; '.format(data.refBand, data.refMag)
                   +'forced fit at {}-band'.format(data.forcedFilter))
-        saveName = "Mag_Plot_{}_{}-Forced_{}.png".format(data.refBand,data.refMag, data.forcedFilter)
+        saveName = "Mag_Plot_{}_{}-Forced_{}.png".format(data.refBand,
+                                                         data.refMag, 
+                                                         data.forcedFilter)
         plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
 
 # make Zebra-friendly output file
-# writeFile taken from 15-112 class notes:
+# readFile and writeFile taken from CMU 15-112 class notes:
 # http://www.kosbie.net/cmu/spring-13/15-112/handouts/fileWebIO.py
+def readFile(filename, mode="rt"):
+    # rt stands for "read text"
+    fin = contents = None
+    try:
+        fin = open(filename, mode)
+        contents = fin.read()
+    finally:
+        if (fin != None): fin.close()
+    return contents
+
 def writeFile(filename, contents, mode="wt"):
     fout = None
     try:
@@ -487,26 +506,46 @@ def makeCatalog(data, redshift):
         for j in xrange(len(fluxData[0])):
             contents += (str(fluxData[i][j]) + " ")
     contents += ("\n")
-    if not os.path.exists("gal_catalog.cat"):
-        writeFile("gal_catalog.cat", contents)
+    if not os.path.exists(data.catpath):
+        writeFile(data.catpath, contents)
     else:
-        writeFile("gal_catalog.cat", contents, "a")
+        writeFile(data.catpath, contents, "a")
 
-def getNewMagList(data, fluxList, filter_name):
-    zeropoint_mag = data.filters[filter_name].zeropoint
-    magList = []
-    for flux in fluxList:
-        if flux == None:  magList.append(None)
-        else:
-            magList.append(-2.5 * numpy.log10(flux) + zeropoint_mag)
-    return magList
+def runZebraScript(data):
+    os.chdir(data.zebrapath + "scripts/")
+    subprocess.Popen(['./callzebra_ML_notImproved_2']).wait()
+    redshifts = readRedshifts(data.zebrapath+'examples/ML_notImproved/ML.dat')
+    os.chdir(data.path)
+    return redshifts
+
+def readRedshifts(filename):
+    extractedList = extractData(readFile(filename))
+    redshifts = []
+    for line in extractedList:
+        (items, isWhitespace) = ([""], True)
+        extractionIndex = charIndex = 0
+        while charIndex < len(line):
+            char = line[charIndex]
+            if isWhitespace == False:
+                if char == " ": 
+                    isWhitespace = True
+                    items.append("")
+                    extractionIndex += 1
+                else: items[extractionIndex] += char
+            else:
+                if char != " ":
+                    isWhitespace = False
+                    items[extractionIndex] += char
+            charIndex += 1
+        redshifts.append(items[2])
+    return redshifts
     
-def getNewColorList(data, oldMagList, magList):
-    colorList = []
-    length = min(len(oldMagList),len(magList))
-    for i in xrange(length):
-        colorList.append(oldMagList[i] - magList[i])
-    return colorList
+def extractData(contents):
+    contentList = string.split(contents,"\n")[:-1]
+    extractedList = []
+    for i in xrange(len(contentList)):
+        if contentList[i][0] != "#":  extractedList.append(contentList[i])
+    return extractedList
 
 if __name__ == "__main__":
     main(sys.argv)
