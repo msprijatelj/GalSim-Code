@@ -10,6 +10,8 @@ import numpy
 import logging
 import subprocess
 import galsim
+from tractor import *
+
 
 # Top-level function
 def main(argv):
@@ -24,6 +26,14 @@ def main(argv):
     data.imageSize = 64
     data.pixel_scale = 0.2 # arcseconds
     data.noiseIterations = 100
+    # Iterations to complete
+    fluxNum = 2
+    redshiftNum = 3
+    # Other parameters
+    fluxMin, fluxMax = 0.0, 1.0
+    redshiftMin, redshiftMax = 0.2, 1.0
+    data.ratios = numpy.linspace(fluxMin,fluxMax,fluxNum)
+    data.redshifts = numpy.linspace(redshiftMin,redshiftMax,redshiftNum)
     # Where to find and output data
     data.path, filename = os.path.split(__file__)
     datapath = os.path.abspath(os.path.join(data.path, "data/"))
@@ -49,9 +59,11 @@ def main(argv):
     if os.path.exists(data.catpath):
         os.remove(data.catpath)
     makeGalaxies(data)
-    logger.info('You can display the output in ds9 with a command line that looks something like:')
-    logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/gal_r.fits -green -scale limits'
-                +' -0.25 1.0 output_i/gal_i.fits -red -scale limits -0.25 1.0 output_z/gal_z.fits'
+    logger.info('You can display the output in ds9 with a command line that '+
+                'looks something like:')
+    logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/gal_r.fits '
+                +'-green -scale limits -0.25 1.0 output_i/gal_i.fits '
+                +'-red -scale limits -0.25 1.0 output_z/gal_z.fits'
                 +' -zoom 2 &')
 
 # Initialization functions
@@ -84,17 +96,10 @@ def readInLSST(datapath, filter_names):
 def makeGalaxies(data):
     data.logger.info('')
     data.logger.info('Starting to generate chromatic bulge+disk galaxy')
-    # Iterations to complete
-    fluxNum = 2
-    redshiftNum = 3
-    # Other parameters
-    fluxMin, fluxMax = 0.0, 1.0
-    redshiftMin, redshiftMax = 0.2, 1.0
     fluxIndex = 0
-    #fig, ax = plt.subplots()
-    for fluxRatio in numpy.linspace(fluxMin,fluxMax,fluxNum):   
+    for fluxRatio in data.ratios:   
         shiftIndex = 0
-        for redshift in numpy.linspace(redshiftMin,redshiftMax,redshiftNum):           
+        for redshift in data.redshifts:           
             data.bdfinal = makeGalaxy(fluxRatio, redshift, data.SEDs)
             data.logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
@@ -105,8 +110,8 @@ def makeGalaxies(data):
     figure1Setup(data)
     figure2Setup(data)
     figure3Setup(data)
-    redshifts = runZebraScript(data)
-    print redshifts
+    outputRedshifts, loError, hiError = runZebraScript(data)
+    makeRedshiftPlot(data, outputRedshifts, loError, hiError)
 
 # Individual galaxy generator functions
 def makeGalaxy(fluxRatio, redshift, SEDs):
@@ -199,8 +204,8 @@ def applyFilter(data,fluxRatio,redshift):
         oldMagList = magList
     # Using accumulated color lists, generate the magnitudes
     # embed acquired information in the data structure
-    otherMags = makeMagListsIndirect(data, colorDict)
-    avgOtherMags, otherMagStDevs = listAvgStDev(otherMags)
+    #otherMags = makeMagListsIndirect(data, colorDict)
+    #avgOtherMags, otherMagStDevs = listAvgStDev(otherMags)
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
     data.avgColors, data.colorStDevs = avgColors, colorStDevs
     data.avgMags, data.magStDevs = avgMags, magStDevs
@@ -239,8 +244,8 @@ def makeModels(data):
             model = galsim.Image(bounds, scale=data.pixel_scale) 
             newModel.drawImage(image = model)
             model.addNoise(data.gaussian_noise)
-            file_name = os.path.join('output','test.fits')
-            model.write(file_name)
+            #file_name = os.path.join('output','test.fits')
+            #model.write(file_name)
             models.append(model)
     return models
 
@@ -273,6 +278,7 @@ def findAvgStDev(inputList):
     stDev = numpy.std(calcList)
     return avg, stDev
 
+"""
 def listAvgStDev(inputLists):
     meanList, stDevList = [], []
     calcLists = copy.deepcopy(inputLists)
@@ -283,6 +289,7 @@ def listAvgStDev(inputLists):
         meanList.append(numpy.mean(tempList))
         stDevList.append(numpy.std(tempList))
     return meanList, stDevList
+"""
         
 def makeFluxList(images):
     fluxList = []
@@ -334,7 +341,22 @@ def makeColorList(oldMagList, magList):
             colorList.append(oldMagList[i] - magList[i])
         else: colorList.append(None)
     return colorList
-
+    
+"""  
+def altMakeColorList(data, oldFluxList, fluxList, filter_name):
+    colorList = []
+    nameIndex = data.filter_names.index(filter_name)
+    oldFilter = data.filters[data.filter_names[nameIndex - 1]]
+    nowFilter = data.filters[filter_name]
+    length = min(len(oldFluxList), len(fluxList))
+    for i in xrange(length):
+        if oldFluxList[i] != None and fluxList[i] != None:
+            zeropoints = oldFilter.zeropoint - nowFilter.zeropoint
+            color = zeropoints - 2.5*numpy.log10(oldFluxList[i]/fluxList[i])
+            colorList.append(color)
+        else:  colorList.append(None)
+    return colorList
+    
 def findColorsDirect(oldFluxList, fluxList):
     # Old color-calculating function
     colorList = []
@@ -381,7 +403,7 @@ def makeMagListsIndirect(data, colorDict):
                     newMags.append(magLists[i][k]-colorDict[key][k])
             magLists[i+1] = newMags
     return magLists
-
+"""
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     # colors = ["b","c","g","y","r","m"]
     colors = ["g","y","r","m"]
@@ -454,7 +476,7 @@ def figure2Setup(data):
         plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
 
 def figure3Setup(data):
-    # Swap focus to color plot, add finishing touches to plot
+    # Swap focus to magnitude plot, add finishing touches to plot
     plt.figure(3)
     plt.xlim([-1,len(data.filter_names)])
     plt.xlabel('Band')
@@ -476,6 +498,48 @@ def figure3Setup(data):
                                                          data.forcedFilter)
         plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
 
+def makeRedshiftPlot(data, outputRedshifts, loError, hiError):
+    outShifts = copy.deepcopy(outputRedshifts)
+    # colors = ["b","c","g","y","r","m"]
+    colors = ["g","y","r","m"]
+    shapes = ["o","^","s","p","h","D"]
+    ratios = data.ratios
+    redshifts = data.redshifts
+    n_groups, m_groups = len(redshifts), len(outputRedshifts)
+    plt.figure(4)
+    errors = [copy.deepcopy(loError), copy.deepcopy(hiError)]
+    fluxIndex = 0
+    for fluxRatio in ratios:
+        shiftIndex = 0
+        usedShifts, usedErrors = [], [[],[]]
+        for shift in redshifts:
+            usedShifts.append(outShifts.pop(0))
+            usedErrors[0].append(errors[0].pop(0))
+            usedErrors[1].append(errors[1].pop(0))
+        plt.errorbar(redshifts, usedShifts, usedErrors, None, barsabove = True, 
+                     marker = "%s" % shapes[shiftIndex], linestyle = "none", 
+                     mfc = "%s" % colors[fluxIndex], capsize = 10, ecolor = "k",
+                     label = "{} B/T".format(fluxRatio))
+        fluxIndex +=1
+    redshiftLine = linspace(0,2)
+    plt.plot(redshiftLine, redshiftLine, linewidth=1,
+             label = "Expected Redshifts")
+    plt.xlim([0,2])
+    plt.ylim(0)
+    plt.xlabel('Input Redshifts')
+    plt.ylabel('Output Redshifts')
+    plt.grid()
+    lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+    plt.show()
+    if data.forced == False:
+        plt.title('Measured Redshifts vs. Actual Redshifts')
+        plt.savefig("Redshifts.png",bbox_extra_artists=(lgd,),bbox_inches='tight')
+    else:
+        plt.title("Measured Redshifts vs. Actual Redshifts; "
+                  +'forced fit at {}-band'.format(data.forcedFilter))
+        saveName = "Redshifts-Forced_{}.png".format(data.forcedFilter)
+        plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
+        
 # make Zebra-friendly output file
 # readFile and writeFile taken from CMU 15-112 class notes:
 # http://www.kosbie.net/cmu/spring-13/15-112/handouts/fileWebIO.py
@@ -514,13 +578,15 @@ def makeCatalog(data, redshift):
 def runZebraScript(data):
     os.chdir(data.zebrapath + "scripts/")
     subprocess.Popen(['./callzebra_ML_notImproved_2']).wait()
-    redshifts = readRedshifts(data.zebrapath+'examples/ML_notImproved/ML.dat')
+    (rs, loE, hiE) = readRedshifts(data.zebrapath+'examples/ML_notImproved/ML.dat')
     os.chdir(data.path)
-    return redshifts
+    return rs, loE, hiE
 
 def readRedshifts(filename):
     extractedList = extractData(readFile(filename))
     redshifts = []
+    loErrors = []
+    hiErrors = []
     for line in extractedList:
         (items, isWhitespace) = ([""], True)
         extractionIndex = charIndex = 0
@@ -537,8 +603,11 @@ def readRedshifts(filename):
                     isWhitespace = False
                     items[extractionIndex] += char
             charIndex += 1
-        redshifts.append(items[2])
-    return redshifts
+        redshifts.append(float(items[2]))
+        # Errors could be from columns 21 to 28 (alternating lo/hi)   
+        loErrors.append(abs(float(items[20]) - float(items[2])))
+        hiErrors.append(abs(float(items[21]) - float(items[2])))
+    return redshifts, loErrors, hiErrors
     
 def extractData(contents):
     contentList = string.split(contents,"\n")[:-1]
