@@ -111,7 +111,6 @@ def makeGalaxies(data):
     figure2Setup(data)
     figure3Setup(data)
     outputRedshifts, loError, hiError = runZebraScript(data)
-    print outputRedshifts
     makeRedshiftPlot(data, outputRedshifts, loError, hiError)
 
 # Individual galaxy generator functions
@@ -335,7 +334,7 @@ def makeColorList(oldMagList, magList):
             colorList.append(oldMagList[i] - magList[i])
         else: colorList.append(None)
     return colorList
-    
+
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     # colors = ["b","c","g","y","r","m"]
     colors = ["g","y","r","m"]
@@ -443,7 +442,7 @@ def makeRedshiftPlot(data, outputRedshifts, loError, hiError):
             usedShifts.append(outShifts.pop(0))
             usedErrors[0].append(errors[0].pop(0))
             usedErrors[1].append(errors[1].pop(0))
-        plt.errorbar(redshifts, usedShifts, usedErrors, None, barsabove = True, 
+        plt.errorbar(redshifts, usedShifts, usedErrors, None, barsabove = True,
                      marker = "o", linestyle = "none", 
                      mfc = "%s" %colors[fluxIndex], capsize = 10, ecolor = "k",
                      label = "{} B/T".format(fluxRatio))
