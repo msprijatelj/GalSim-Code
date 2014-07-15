@@ -111,6 +111,7 @@ def makeGalaxies(data):
     figure2Setup(data)
     figure3Setup(data)
     outputRedshifts, loError, hiError = runZebraScript(data)
+    print outputRedshifts
     makeRedshiftPlot(data, outputRedshifts, loError, hiError)
 
 # Individual galaxy generator functions
@@ -151,7 +152,7 @@ def applyFilter(data,fluxRatio,redshift):
     # initialize (pseudo-)random number generator and noise
     random_seed = 1234567
     rng = galsim.BaseDeviate(random_seed)
-    noiseSigma = 0.02
+    noiseSigma = 0.1
     data.gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
     filter_names = data.filter_names
     # Initialize data storage lists
@@ -162,7 +163,8 @@ def applyFilter(data,fluxRatio,redshift):
     oldMagList = []
     # Create list of models if forced photometry is enabled
     if data.forced == True:
-        models = makeModels(data)
+        models, successRate = makeModels(data)
+        data.logger.info('Success Rate = {}'.format(successRate))
     for i in xrange(len(filter_names)):
         # Write the data cube
         outpath = setOutput(filter_names[i],data.path)
@@ -178,8 +180,9 @@ def applyFilter(data,fluxRatio,redshift):
         # Make lists of flux using the enabled method
         if data.forced == False:
             fluxList, successRate = makeFluxList(images)
+            data.logger.info('Success Rate = {}'.format(successRate))
         else:
-            fluxList, successRate = makeForcedFluxList(images,models), None
+            fluxList = makeForcedFluxList(data,images,models)
         # Use the list of fluxes to find all other relevant data
         avgFlux,stDev = findAvgStDev(fluxList)
         avgFluxes.append(avgFlux), stDevs.append(stDev)
@@ -199,18 +202,13 @@ def applyFilter(data,fluxRatio,redshift):
             data.logger.info('Color Standard Dev = {}'.format(colorStDev))
             key = "%s%s" % (filter_names[i-1], filter_names[i])
             colorDict[key] = colorList
-        data.logger.info('Success Rate = {}'.format(successRate))
         # Update old flux list for next color calculation
         oldMagList = magList
     # Using accumulated color lists, generate the magnitudes
     # embed acquired information in the data structure
-    #otherMags = makeMagListsIndirect(data, colorDict)
-    #avgOtherMags, otherMagStDevs = listAvgStDev(otherMags)
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
     data.avgColors, data.colorStDevs = avgColors, colorStDevs
     data.avgMags, data.magStDevs = avgMags, magStDevs
-    #data.avgMags, data.magStDevs = avgOtherMags, otherMagStDevs
-    #data.avgOtherMags, data.otherMagStDevs = avgOtherMags, otherMagStDevs
     makeCatalog(data, redshift)
 
 def setOutput(filter_name,path):
@@ -228,12 +226,17 @@ def makeModels(data):
     images = makeCube(data, data.forcedFilter)
     # Establish relevant model list and image bounds
     models = []
+    modelFluxList = []
     bounds = galsim.BoundsI(1,data.imageSize,1,data.imageSize)
+    totalAttempts = len(images)
+    successes = 0.0
     for image in images:
         gal_moments = galsim.hsm.FindAdaptiveMom(image, strict = False)
         # If .FindAdaptiveMom was successful, make the model image
         if gal_moments.moments_status == 0:
+            successes += 1
             flux = gal_moments.moments_amp
+            modelFluxList.append(flux)
             # Resize sigma based on pixel scale of the image
             sigma = gal_moments.moments_sigma * data.pixel_scale
             g1 = gal_moments.observed_shape.getG1()
@@ -247,7 +250,9 @@ def makeModels(data):
             #file_name = os.path.join('output','test.fits')
             #model.write(file_name)
             models.append(model)
-    return models
+        else: modelFluxList.append(None)
+    data.modelFluxList = modelFluxList
+    return models, successes/totalAttempts
 
 def makeCube(data,filter_name):
     # Acquire filter, then apply to the base image
@@ -269,27 +274,14 @@ def makeCubeImages(data, img):
         images.append(newImg)
     return images
 
-def findAvgStDev(inputList):
+def findAvgStDev(inputList, floor=0.0):
     calcList = []
     # Remove all None-type objects
     for i in xrange(len(inputList)):
         if inputList[i] != None: calcList.append(inputList[i])
     avg = numpy.mean(calcList)
-    stDev = numpy.std(calcList)
+    stDev = max(numpy.std(calcList), floor)
     return avg, stDev
-
-"""
-def listAvgStDev(inputLists):
-    meanList, stDevList = [], []
-    calcLists = copy.deepcopy(inputLists)
-    for i in xrange(len(calcLists)):
-        tempList = []
-        for j in xrange(len(calcLists[i])):
-            if calcLists[i][j] != None: tempList.append(calcLists[i][j])
-        meanList.append(numpy.mean(tempList))
-        stDevList.append(numpy.std(tempList))
-    return meanList, stDevList
-"""
         
 def makeFluxList(images):
     fluxList = []
@@ -307,7 +299,7 @@ def makeFluxList(images):
     successRate = successes/totalAttempts
     return fluxList, successRate
 
-def makeForcedFluxList(images,models):
+def makeForcedFluxList(data,images,models):
     fluxList = []
     totalAttempts = min(len(images),len(models))
     for attempt in xrange(totalAttempts):
@@ -318,7 +310,9 @@ def makeForcedFluxList(images,models):
             for y in xrange(1,images[attempt].bounds.ymax+1):
                 numerator+=(images[attempt].at(x,y))*(models[attempt].at(x,y))
                 denominator += (models[attempt].at(x,y))**2
-        flux = (numerator/denominator)
+        if data.modelFluxList[attempt] != None:
+            flux = (numerator/denominator)*data.modelFluxList[attempt]
+        else: flux = None
         fluxList.append(flux)
     return fluxList
     
@@ -327,7 +321,7 @@ def makeMagList(data, fluxList, filter_name):
     zeropoint_mag = data.filters[filter_name].zeropoint
     magList = []
     for flux in fluxList:
-        if flux == None:  magList.append(None)
+        if (flux == None) or (flux <= 0):  magList.append(None)
         else:
             magList.append(-2.5 * numpy.log10(flux) + zeropoint_mag)
     return magList
@@ -342,68 +336,6 @@ def makeColorList(oldMagList, magList):
         else: colorList.append(None)
     return colorList
     
-"""  
-def altMakeColorList(data, oldFluxList, fluxList, filter_name):
-    colorList = []
-    nameIndex = data.filter_names.index(filter_name)
-    oldFilter = data.filters[data.filter_names[nameIndex - 1]]
-    nowFilter = data.filters[filter_name]
-    length = min(len(oldFluxList), len(fluxList))
-    for i in xrange(length):
-        if oldFluxList[i] != None and fluxList[i] != None:
-            zeropoints = oldFilter.zeropoint - nowFilter.zeropoint
-            color = zeropoints - 2.5*numpy.log10(oldFluxList[i]/fluxList[i])
-            colorList.append(color)
-        else:  colorList.append(None)
-    return colorList
-    
-def findColorsDirect(oldFluxList, fluxList):
-    # Old color-calculating function
-    colorList = []
-    for i in xrange(min(len(oldFluxList),len(fluxList))):
-        if ((oldFluxList[i] == None) or (fluxList[i] == None)):
-            colorList.append(None)
-        else:
-            newColor = -2.5*math.log10(oldFluxList[i]/fluxList[i])
-            colorList.append(newColor)
-    return colorList
-
-def makeMagListsIndirect(data, colorDict):
-    # Old magnitude-calculating function
-    filter_names = data.filter_names
-    startIndex = filter_names.index(data.refBand)
-    # Generate empty list of magnitudes, fill with given magnitude to start
-    magLists = [[] for char in filter_names]
-    magLists[startIndex] = [data.refMag for i in xrange(data.noiseIterations)]
-    # color = -2.5*log10(flux1/flux2) = mag1 - mag2
-    # Find the magnitudes for earlier bands
-    if startIndex > 0:
-        for i in xrange(startIndex, 0 , -1):
-            key = "%s%s" % (filter_names[i-1],filter_names[i])
-            length = min(len(colorDict[key]), len(magLists[i]))
-            newMags = []
-            for k in xrange(length):
-                if (colorDict[key][k] == None or magLists[i][k] == None):
-                    # Retain list length, but do not record meaningful data
-                    newMags.append(None)
-                else:
-                    newMags.append(colorDict[key][k]+magLists[i][k])
-            magLists[i-1] = newMags
-    # Find the magnitudes for later bands
-    if startIndex < (len(filter_names) - 1):
-        for i in xrange(startIndex, len(filter_names)-1):
-            key = "%s%s" % (filter_names[i],filter_names[i+1])
-            length = min(len(colorDict[key]), len(magLists[i]))
-            newMags = []
-            for k in xrange(length):
-                if (colorDict[key][k] == None or magLists[i][k] == None):
-                    # Retain list length, but do not record meaningful data
-                    newMags.append(None)
-                else:
-                    newMags.append(magLists[i][k]-colorDict[key][k])
-            magLists[i+1] = newMags
-    return magLists
-"""
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     # colors = ["b","c","g","y","r","m"]
     colors = ["g","y","r","m"]
@@ -452,7 +384,7 @@ def figure1Setup(data):
     else:
         plt.title('Flux across bands at varied flux ratios and redshifts; '
                   +'forced fit at {}-band'.format(data.forcedFilter))
-        plt.ylabel('Ratio of Flux in band to Flux in {}-band'.format(data.forcedFilter))
+        plt.ylabel('Magnitude of the Flux (Arbitrary Units)'.format(data.forcedFilter))
         saveName = "Flux_Plot-Forced_{}.png".format(data.forcedFilter)
         plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
     
@@ -500,30 +432,28 @@ def figure3Setup(data):
 
 def makeRedshiftPlot(data, outputRedshifts, loError, hiError):
     outShifts = copy.deepcopy(outputRedshifts)
-    # colors = ["b","c","g","y","r","m"]
-    colors = ["g","y","r","m"]
-    shapes = ["o","^","s","p","h","D"]
-    ratios = data.ratios
-    redshifts = data.redshifts
-    n_groups, m_groups = len(redshifts), len(outputRedshifts)
+    colors = ["b","c","g","y","r","m"]
+    ratios, redshifts = data.ratios, data.redshifts
     plt.figure(4)
     errors = [copy.deepcopy(loError), copy.deepcopy(hiError)]
     fluxIndex = 0
-    for fluxRatio in ratios:
-        shiftIndex = 0
+    for fluxIndex, fluxRatio in enumerate(ratios):
         usedShifts, usedErrors = [], [[],[]]
         for shift in redshifts:
             usedShifts.append(outShifts.pop(0))
             usedErrors[0].append(errors[0].pop(0))
             usedErrors[1].append(errors[1].pop(0))
         plt.errorbar(redshifts, usedShifts, usedErrors, None, barsabove = True, 
-                     marker = "%s" % shapes[shiftIndex], linestyle = "none", 
-                     mfc = "%s" % colors[fluxIndex], capsize = 10, ecolor = "k",
+                     marker = "o", linestyle = "none", 
+                     mfc = "%s" %colors[fluxIndex], capsize = 10, ecolor = "k",
                      label = "{} B/T".format(fluxRatio))
-        fluxIndex +=1
     redshiftLine = linspace(0,2)
     plt.plot(redshiftLine, redshiftLine, linewidth=1,
              label = "Expected Redshifts")
+    figure4Setup(data)
+    
+def figure4Setup(data):
+    plt.figure(4)
     plt.xlim([0,2])
     plt.ylim(0)
     plt.xlabel('Input Redshifts')
@@ -584,9 +514,7 @@ def runZebraScript(data):
 
 def readRedshifts(filename):
     extractedList = extractData(readFile(filename))
-    redshifts = []
-    loErrors = []
-    hiErrors = []
+    redshifts, loErrors, hiErrors = [], [], []
     for line in extractedList:
         (items, isWhitespace) = ([""], True)
         extractionIndex = charIndex = 0
