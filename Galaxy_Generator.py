@@ -10,15 +10,17 @@ import numpy
 import logging
 import subprocess
 import galsim
+import fitsio
 from tractor import *
-
+from tractor.galaxy import *
 
 # Top-level function
 def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable/disable forced photometry, select forced band
-    data.forced = True
+    data.forced = False
+    data.useTractor = False
     data.forcedFilter = "r"
     data.refBand = "r"
     data.refMag = 20
@@ -26,6 +28,7 @@ def main(argv):
     data.imageSize = 64
     data.pixel_scale = 0.2 # arcseconds
     data.noiseIterations = 100
+    data.noiseSigma = 0.1
     # Iterations to complete
     fluxNum = 2
     redshiftNum = 3
@@ -59,12 +62,6 @@ def main(argv):
     if os.path.exists(data.catpath):
         os.remove(data.catpath)
     makeGalaxies(data)
-    logger.info('You can display the output in ds9 with a command line that '+
-                'looks something like:')
-    logger.info('ds9 -rgb -blue -scale limits -0.2 0.8 output_r/gal_r.fits '
-                +'-green -scale limits -0.25 1.0 output_i/gal_i.fits '
-                +'-red -scale limits -0.25 1.0 output_z/gal_z.fits'
-                +' -zoom 2 &')
 
 # Initialization functions
 def readInSEDs(datapath):
@@ -111,6 +108,7 @@ def makeGalaxies(data):
     figure2Setup(data)
     figure3Setup(data)
     outputRedshifts, loError, hiError = runZebraScript(data)
+    print outputRedshifts
     makeRedshiftPlot(data, outputRedshifts, loError, hiError)
 
 # Individual galaxy generator functions
@@ -151,7 +149,7 @@ def applyFilter(data,fluxRatio,redshift):
     # initialize (pseudo-)random number generator and noise
     random_seed = 1234567
     rng = galsim.BaseDeviate(random_seed)
-    noiseSigma = 0.1
+    noiseSigma = data.noiseSigma
     data.gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
     filter_names = data.filter_names
     # Initialize data storage lists
@@ -169,7 +167,7 @@ def applyFilter(data,fluxRatio,redshift):
         outpath = setOutput(filter_names[i],data.path)
         images = makeCube(data,filter_names[i])
         data.logger.debug('Created {}-band image'.format(filter_names[i]))
-        fitsName = 'gal_{}_{}_{}.fits'.format(filter_names[i],fluxRatio,
+        fitsName = "gal_%s_%0.2f_%0.2f.fits" % (filter_names[i],fluxRatio,
                                               redshift)
         out_filename = os.path.join(outpath, fitsName)
         galsim.fits.writeCube(images, out_filename)
@@ -177,32 +175,35 @@ def applyFilter(data,fluxRatio,redshift):
                           + ('bulge-to-total ratio = {}, '.format(fluxRatio))
                           + ('redshift = {}'.format(redshift)))
         # Make lists of flux using the enabled method
-        if data.forced == False:
-            fluxList, successRate = makeFluxList(images)
-            data.logger.info('Success Rate = {}'.format(successRate))
-        else:
-            fluxList = makeForcedFluxList(data,images,models)
-        # Use the list of fluxes to find all other relevant data
-        avgFlux,stDev = findAvgStDev(fluxList)
-        avgFluxes.append(avgFlux), stDevs.append(stDev)
-        data.logger.info('Average flux for {}-band image: {}'.format(filter_names[i], avgFlux))
-        data.logger.info('Standard Deviation = {}'.format(stDev))  
-        magList = makeMagList(data, fluxList, filter_names[i])
-        avgMag, magStDev = findAvgStDev(magList)
-        avgMags.append(avgMag), magStDevs.append(magStDev)
-        data.logger.info('Average mag for {}-band image: {}'.format(filter_names[i], avgMag))
-        data.logger.info('Mag Standard Deviation = {}'.format(magStDev))  
-        # Calculate colors using existing flux data
-        if oldMagList != []:
-            colorList = makeColorList(oldMagList, magList)
-            avgColor, colorStDev = findAvgStDev(colorList)
-            avgColors.append(avgColor), colorStDevs.append(colorStDev)
-            data.logger.info('Color = {}'.format(avgColor))
-            data.logger.info('Color Standard Dev = {}'.format(colorStDev))
-            key = "%s%s" % (filter_names[i-1], filter_names[i])
-            colorDict[key] = colorList
-        # Update old flux list for next color calculation
-        oldMagList = magList
+        if data.useTractor == False:
+            if data.forced == False:
+                fluxList, successRate = makeFluxList(images)
+                data.logger.info('Success Rate = {}'.format(successRate))
+            elif data.forced == True:
+                fluxList = makeForcedFluxList(data,images,models)
+            # Use the list of fluxes to find all other relevant data
+            avgFlux,stDev = findAvgStDev(fluxList)
+            avgFluxes.append(avgFlux), stDevs.append(stDev)
+            data.logger.info('Average flux for {}-band image: {}'.format(filter_names[i], avgFlux))
+            data.logger.info('Standard Deviation = {}'.format(stDev))  
+            magList = makeMagList(data, fluxList, filter_names[i])
+            avgMag, magStDev = findAvgStDev(magList)
+            avgMags.append(avgMag), magStDevs.append(magStDev)
+            data.logger.info('Average mag for {}-band image: {}'.format(filter_names[i], avgMag))
+            data.logger.info('Mag Standard Deviation = {}'.format(magStDev))  
+            # Calculate colors using existing flux data
+            if oldMagList != []:
+                colorList = makeColorList(oldMagList, magList)
+                avgColor, colorStDev = findAvgStDev(colorList)
+                avgColors.append(avgColor), colorStDevs.append(colorStDev)
+                data.logger.info('Color = {}'.format(avgColor))
+                data.logger.info('Color Standard Dev = {}'.format(colorStDev))
+                key = "%s%s" % (filter_names[i-1], filter_names[i])
+                colorDict[key] = colorList
+            # Update old flux list for next color calculation
+            oldMagList = magList
+    if data.useTractor == True:
+        avgFluxes = makeTractorFluxList(data, fluxRatio, redshift)
     # Using accumulated color lists, generate the magnitudes
     # embed acquired information in the data structure
     data.avgFluxes, data.stDevs = avgFluxes, stDevs
@@ -338,7 +339,7 @@ def makeColorList(oldMagList, magList):
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     # colors = ["b","c","g","y","r","m"]
     colors = ["g","y","r","m"]
-    shapes = ["o","^","s","p","h","D"]
+    shapes = ["o","^","s","v","h","p"]
     n_groups, m_groups = len(data.avgFluxes), len(data.avgColors)
     # Start with the flux plot
     plt.figure(1)
@@ -347,7 +348,7 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     plt.errorbar(index, avgFluxes, stDevs, None, barsabove = True, 
                  marker = "%s" % shapes[fluxIndex], linestyle = "none", 
                  mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
-                 label = "{} B/T, {} redshift".format(fluxRatio,redshift))
+                 label = "%0.2f B/T, %0.2f redshift" % (fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
     # Alternate to the color plot
     plt.figure(2)
@@ -356,7 +357,7 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     plt.errorbar(colorIndex, avgColors, colorStDevs, None, barsabove = True,
                  marker = "%s" % shapes[fluxIndex], linestyle = "none",
                  mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
-                 label = "{} B/T, {} redshift".format(fluxRatio,redshift))
+                 label = "%0.2f B/T, %0.2f redshift" % (fluxRatio,redshift))
     plt.xticks(colorIndex, color_name_list)
     # Alternate to the magnitude plot
     plt.figure(3)
@@ -365,7 +366,7 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     plt.errorbar(index, avgMags, magStDevs, None, barsabove = True, 
                  marker = "%s" % shapes[fluxIndex], linestyle = "none", 
                  mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
-                 label = "{} B/T, {} redshift".format(fluxRatio,redshift))
+                 label = "%0.2f B/T, %0.2f redshift" % (fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
 
 def figure1Setup(data):
@@ -445,7 +446,7 @@ def makeRedshiftPlot(data, outputRedshifts, loError, hiError):
         plt.errorbar(redshifts, usedShifts, usedErrors, None, barsabove = True,
                      marker = "o", linestyle = "none", 
                      mfc = "%s" %colors[fluxIndex], capsize = 10, ecolor = "k",
-                     label = "{} B/T".format(fluxRatio))
+                     label = "%0.2f B/T" % (fluxRatio))
     redshiftLine = linspace(0,2)
     plt.plot(redshiftLine, redshiftLine, linewidth=1,
              label = "Expected Redshifts")
@@ -542,6 +543,72 @@ def extractData(contents):
     for i in xrange(len(contentList)):
         if contentList[i][0] != "#":  extractedList.append(contentList[i])
     return extractedList
+
+# Tractor functions:
+def makeTractorFluxList(data, fluxRatio, redshift):
+    bands = data.filter_names
+    pixnoise = data.noiseSigma
+    psf_sigma = 1.5
+    nepochs = data.noiseIterations
+    tims = []
+    for band in bands:
+        filename =  ("output_%s/gal_%s_%0.2f_%0.2f.fits" % (band,band,fluxRatio,
+                     redshift))
+        print 'Band', band, 'Reading', filename
+        cube,hdr = fitsio.read(filename, header = True)    
+        print 'Read', cube.shape
+        pixscale = hdr['GS_SCALE']
+        print 'Pixel scale:', pixscale, 'arcsec/pix'
+        nims,h,w = cube.shape
+        assert(nims == nepochs)    
+        for k in range(nims):
+            image = cube[k,:,:]
+            tim = Image(data=image, invvar=np.ones_like(image) / pixnoise**2,
+                        photocal=FluxesPhotoCal(band),
+                        wcs=NullWCS(pixscale=pixscale),
+                        psf=NCircularGaussianPSF([psf_sigma], [1.0]))
+            tims.append(tim)
+    galaxy = makeTractorGalaxy(bands, w, h)
+    tractor = optimizeTractor(Tractor(tims,[galaxy]))
+    params = getTractorParams(tractor)
+    fluxList = extractTractorFluxes(bands, params)
+    return fluxList
+            
+def makeTractorGalaxy(bands, w, h):   
+    galaxy = CompositeGalaxy(PixPos(w/2, h/2),
+                             Fluxes(**dict([(band, 10.) for band in bands])),
+                             EllipseESoft(0., 0., 0.),
+                             Fluxes(**dict([(band, 10.) for band in bands])),
+                             EllipseESoft(0., 0., 0.))
+    return galaxy
+    
+def optimizeTractor(tractor):
+    # Freeze all image calibration parameters
+    tractor.freezeParam('images')
+    # Take several linearized least squares steps
+    for i in range(20):
+        dlnp,X,alpha = tractor.optimize(shared_params=False)
+        print 'dlnp', dlnp
+        if dlnp < 1e-3:
+            break
+    return tractor
+    
+def getTractorParams(tractor):
+    sources = tractor.getCatalog()
+    params = sources.getAllParams()
+    return params
+    
+def extractTractorFluxes(bands, params):
+    fluxDict = dict()
+    paramBands = "giruyz"
+    for i in xrange(len(bands)):
+        fluxDict[paramBands[i]] = params[i+2]
+    fluxList = []
+    for char in bands:
+        fluxList.append(fluxDict[char])
+    return fluxList
+
+
 
 if __name__ == "__main__":
     main(sys.argv)
