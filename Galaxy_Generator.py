@@ -19,17 +19,16 @@ def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable/disable forced photometry, select forced band
-    data.forced = False
-    if data.forced == False:
-        data.useTractor = True
-    else: data.useTractor = False
+    data.useTractor = True
+    if data.useTractor == False:
+        data.forced = False
     data.forcedFilter = "r"
-    data.refBand = "r"
-    data.refMag = 20
+    #data.refBand = "r"
+    #data.refMag = 20
     # Establish basic image parameters
     data.imageSize = 64
     data.pixel_scale = 0.2 # arcseconds
-    data.noiseIterations = 20
+    data.noiseIterations = 100 if data.useTractor == True else 100
     data.noiseSigma = 0.1
     # Iterations to complete
     fluxNum = 4
@@ -156,27 +155,17 @@ def applyFilter(data,fluxRatio,redshift):
     data.gaussian_noise = galsim.GaussianNoise(rng, sigma=noiseSigma)
     filter_names = data.filter_names
     # Initialize data storage lists
-    avgFluxes, stDevs = [], []
-    avgColors, colorStDevs = [], []
-    colorDict = {}
-    avgMags, magStDevs = [], []
+    data.avgFluxes, data.stDevs = [], []
+    data.avgColors, data.colorStDevs = [], []
+    data.avgMags, data.magStDevs = [], []
     oldMagList = []
     # Create list of models if forced photometry is enabled
-    if data.forced == True:
+    if data.useTractor == False and data.forced == True:
         models, successRate = makeModels(data)
         data.logger.info('Success Rate = {}'.format(successRate))
     for i in xrange(len(filter_names)):
         # Write the data cube
-        outpath = setOutput(filter_names[i],data.path)
-        images = makeCube(data,filter_names[i])
-        data.logger.debug('Created {}-band image'.format(filter_names[i]))
-        fitsName = "gal_%s_%0.2f_%0.2f.fits" % (filter_names[i],fluxRatio,
-                                              redshift)
-        out_filename = os.path.join(outpath, fitsName)
-        galsim.fits.writeCube(images, out_filename)
-        data.logger.debug(('Wrote %s-band image to disk, '%(filter_names[i]))
-                          + ('bulge-to-total ratio = {}, '.format(fluxRatio))
-                          + ('redshift = {}'.format(redshift)))
+        images = imageSetup(data, fluxRatio, redshift, filter_names[i])
         # Make lists of flux using the enabled method
         if data.useTractor == False:
             if data.forced == False:
@@ -185,37 +174,49 @@ def applyFilter(data,fluxRatio,redshift):
             elif data.forced == True:
                 fluxList = makeForcedFluxList(data,images,models)
             # Use the list of fluxes to find all other relevant data
-            avgFlux,stDev = findAvgStDev(fluxList)
-            avgFluxes.append(avgFlux), stDevs.append(stDev)
-            data.logger.info('Average flux for %s-band image: %s'%(filter_names[i], avgFlux))
-            data.logger.info('Standard Deviation = {}'.format(stDev))  
-            magList = makeMagList(data, fluxList, filter_names[i])
-            avgMag, magStDev = findAvgStDev(magList)
-            avgMags.append(avgMag), magStDevs.append(magStDev)
-            data.logger.info('Average mag for %s-band image: %s'%(filter_names[i], avgMag))
-            data.logger.info('Mag Standard Deviation = {}'.format(magStDev))  
+            getAvgFluxAndMags(data,fluxList,filter_names[i]) 
             # Calculate colors using existing flux data
             if oldMagList != []:
-                colorList = makeColorList(oldMagList, magList)
-                avgColor, colorStDev = findAvgStDev(colorList)
-                avgColors.append(avgColor), colorStDevs.append(colorStDev)
-                data.logger.info('Color = {}'.format(avgColor))
-                data.logger.info('Color Standard Dev = {}'.format(colorStDev))
-                key = "%s%s" % (filter_names[i-1], filter_names[i])
-                colorDict[key] = colorList
+                getColors(data, oldMagList)
             # Update old flux list for next color calculation
-            oldMagList = magList
+            oldMagList = data.magList
     if data.useTractor == True:
         package = makeTractorFluxList(data, fluxRatio, redshift)
-        avgFluxes,stDevs,avgMags,magStDevs = package
-        print avgFluxes, stDevs, avgMags, magStDevs
+        data.avgFluxes,data.stDevs,data.avgMags,data.magStDevs = package
+        print data.avgFluxes,data.stDevs,data.avgMags,data.magStDevs
     # Using accumulated color lists, generate the magnitudes
     # embed acquired information in the data structure
-    data.avgFluxes, data.stDevs = avgFluxes, stDevs
-    if data.useTractor == False:
-        data.avgColors, data.colorStDevs = avgColors, colorStDevs
-    data.avgMags, data.magStDevs = avgMags, magStDevs
     makeCatalog(data, redshift)
+
+def imageSetup(data, fluxRatio, redshift, filter_name):
+    outpath = setOutput(filter_name,data.path)
+    images = makeCube(data,filter_name)
+    data.logger.debug('Created {}-band image'.format(filter_name))
+    fitsName = "gal_%s_%0.2f_%0.2f.fits"%(filter_name,fluxRatio,redshift)
+    out_filename = os.path.join(outpath, fitsName)
+    galsim.fits.writeCube(images, out_filename)
+    data.logger.debug(('Wrote %s-band image to disk, '%(filter_name))
+                      + ('bulge-to-total ratio = {}, '.format(fluxRatio))
+                      + ('redshift = {}'.format(redshift)))
+    return images
+
+def getAvgFluxAndMags(data,fluxList,filter_name):
+    avgFlux,stDev = findAvgStDev(fluxList)
+    data.avgFluxes.append(avgFlux), data.stDevs.append(stDev)
+    data.logger.info('Average flux for %s-band: %s'%(filter_name, avgFlux))
+    data.logger.info('Standard Deviation = {}'.format(stDev))  
+    data.magList = makeMagList(data, fluxList, filter_name)
+    avgMag, magStDev = findAvgStDev(data.magList)
+    data.avgMags.append(avgMag), data.magStDevs.append(magStDev)
+    data.logger.info('Average mag for %s-band: %s'%(filter_name, avgMag))
+    data.logger.info('Mag Standard Deviation = {}'.format(magStDev))
+
+def getColors(data, oldMagList):
+    colorList = makeColorList(oldMagList, data.magList)
+    avgColor, colorStDev = findAvgStDev(colorList)
+    data.avgColors.append(avgColor), data.colorStDevs.append(colorStDev)
+    data.logger.info('Color = {}'.format(avgColor))
+    data.logger.info('Color Standard Dev = {}'.format(colorStDev))
 
 def setOutput(filter_name,path):
     # Check if output directory exists, and create it if it does not
