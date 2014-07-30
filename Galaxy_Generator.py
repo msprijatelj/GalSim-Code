@@ -19,7 +19,7 @@ def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable/disable forced photometry, select forced band
-    data.useTractor = True
+    data.useTractor = False
     if data.useTractor == False:
         data.forced = False
     data.forcedFilter = "r"
@@ -28,7 +28,7 @@ def main(argv):
     # Establish basic image parameters
     data.imageSize = 64
     data.pixel_scale = 0.2 # arcseconds
-    data.noiseIterations = 100 if data.useTractor == True else 100
+    data.noiseIterations = 5 if data.useTractor == True else 100
     data.noiseSigma = 0.1
     # Iterations to complete
     fluxNum = 4
@@ -95,6 +95,10 @@ def makeGalaxies(data):
     data.logger.info('')
     data.logger.info('Starting to generate chromatic bulge+disk galaxy')
     fluxIndex = 0
+    data.allFluxes = []
+    data.allMags = []
+    data.fractions = []
+    data.fracs = []
     for fluxRatio in data.ratios:   
         shiftIndex = 0
         for redshift in data.redshifts:           
@@ -102,7 +106,9 @@ def makeGalaxies(data):
             data.logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
             applyFilter(data,fluxRatio,redshift)
-            newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex)         
+            newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex)
+            data.allFluxes.append(data.avgFluxes)
+            data.allMags.append(data.avgMags)
             shiftIndex += 1
         fluxIndex += 1
     figure1Setup(data)
@@ -110,8 +116,11 @@ def makeGalaxies(data):
         figure2Setup(data)
     figure3Setup(data)
     outputRedshifts, loError, hiError = runZebraScript(data)
-    print outputRedshifts
+    print np.array(outputRedshifts), np.array(loError), np.array(hiError)
+    print "\n",np.array(data.fractions)
+    print "\n",np.array(data.fracs)
     makeRedshiftPlot(data, outputRedshifts, loError, hiError)
+    print "B/T ratios across bands:\n",btRatiosAcrossBands(data)
 
 # Individual galaxy generator functions
 def makeGalaxy(fluxRatio, redshift, SEDs):
@@ -182,8 +191,9 @@ def applyFilter(data,fluxRatio,redshift):
             oldMagList = data.magList
     if data.useTractor == True:
         package = makeTractorFluxList(data, fluxRatio, redshift)
-        data.avgFluxes,data.stDevs,data.avgMags,data.magStDevs = package
-        print data.avgFluxes,data.stDevs,data.avgMags,data.magStDevs
+        data.avgFluxes,data.stDevs,data.avgMags,data.magStDevs,fracs = package
+        data.fracs.append(fracs)
+        print data.avgFluxes,data.stDevs,data.avgMags,data.magStDevs,data.fracs
     # Using accumulated color lists, generate the magnitudes
     # embed acquired information in the data structure
     makeCatalog(data, redshift)
@@ -346,6 +356,7 @@ def makeColorList(oldMagList, magList):
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     # colors = ["b","c","g","y","r","m"]
     colors = ["g","y","r","m"]
+    color = colors[shiftIndex]
     shapes = ["o","^","s","v","h","p"]
     n_groups  = len(data.avgFluxes)
     # Start with the flux plot
@@ -354,7 +365,7 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     avgFluxes, stDevs = data.avgFluxes, data.stDevs
     plt.errorbar(index, avgFluxes, stDevs, None, barsabove = True, 
                  marker = "%s" % shapes[fluxIndex], linestyle = "none", 
-                 mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
+                 mfc = "%s" % color,capsize = 10,ecolor = "%s" % color,
                  label = "%0.2f B/T, %0.2f redshift" % (fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
     # Alternate to the color plot
@@ -365,7 +376,7 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
         avgColors, colorStDevs = data.avgColors, data.colorStDevs
         plt.errorbar(colorIndex, avgColors, colorStDevs, None, barsabove=True,
                      marker = "%s" % shapes[fluxIndex], linestyle = "none",
-                     mfc = "%s" % colors[shiftIndex],capsize = 10,ecolor = "k",
+                     mfc = "%s" % color,capsize = 10,ecolor = "%s" % color,
                      label = "%0.2f B/T, %0.2f redshift"%(fluxRatio,redshift))
         plt.xticks(colorIndex, color_name_list)
     # Alternate to the magnitude plot
@@ -374,7 +385,7 @@ def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
     avgMags, magStDevs = data.avgMags, data.magStDevs
     plt.errorbar(index, avgMags, magStDevs, None, barsabove = True, 
                  marker = "%s" % shapes[fluxIndex], linestyle = "none", 
-                 mfc = "%s" % colors[shiftIndex], capsize = 10, ecolor = "k",
+                 mfc = "%s" % color,capsize = 10,ecolor = "%s" % color,
                  label = "%0.2f B/T, %0.2f redshift" % (fluxRatio,redshift))
     plt.xticks(index, filter_name_list)
 
@@ -425,6 +436,7 @@ def figure3Setup(data):
     # Swap focus to magnitude plot, add finishing touches to plot
     plt.figure(3)
     plt.xlim([-1,len(data.filter_names)])
+    plt.ylim(24,32) # FIXME - Limits are questionable
     plt.xlabel('Band')
     plt.ylabel('AB Magnitude')
     plt.grid()
@@ -452,6 +464,7 @@ def makeRedshiftPlot(data, outputRedshifts, loError, hiError):
     errors = [copy.deepcopy(loError), copy.deepcopy(hiError)]
     fluxIndex = 0
     for fluxIndex, fluxRatio in enumerate(ratios):
+        color = colors[fluxIndex]
         usedShifts, usedErrors = [], [[],[]]
         for shift in redshifts:
             usedShifts.append(outShifts.pop(0))
@@ -459,7 +472,7 @@ def makeRedshiftPlot(data, outputRedshifts, loError, hiError):
             usedErrors[1].append(errors[1].pop(0))
         plt.errorbar(redshifts, usedShifts, usedErrors, None, barsabove = True,
                      marker = "o", linestyle = "none", 
-                     mfc = "%s" %colors[fluxIndex], capsize = 10, ecolor = "k",
+                     mfc = "%s" %color, capsize = 10, ecolor = "%s"%color,
                      label = "%0.2f B/T" % (fluxRatio))
     redshiftLine = linspace(0,2)
     plt.plot(redshiftLine, redshiftLine, linewidth=1,
@@ -525,10 +538,10 @@ def makeCatalog(data, redshift):
         writeFile(data.catpath, contents, "a")
 
 def runZebraScript(data):
-    os.chdir(data.zebrapath + "scripts/")
+    os.chdir("../zebra-1.10/scripts/")
     subprocess.Popen(['./callzebra_ML_notImproved_2']).wait()
-    datPath = 'examples/ML_notImproved/ML.dat'
-    (rs, loE, hiE) = readRedshifts(data.zebrapath+datPath)
+    datPath = '../examples/ML_notImproved/ML.dat'
+    (rs, loE, hiE) = readRedshifts(datPath)
     os.chdir(data.path)
     return rs, loE, hiE
 
@@ -592,15 +605,32 @@ def makeTractorFluxList(data, fluxRatio, redshift):
                         wcs=NullWCS(pixscale=pixscale),
                         psf=NCircularGaussianPSF([psf_sigma], [1.0]))
             tims.append(tim)
-    galaxy = makeTractorGalaxy(fluxRatio, bands, w, h)
+    galaxy = makeTractorGalaxy(bands, w, h)
+    """
+    # Plot images
+    ima = dict(interpolation='nearest', origin='lower', cmap='gray',
+               vmin=-5.*pixnoise, vmax=20.*pixnoise)
+    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.92)
+    plt.clf()
+    for i,band in enumerate(bands):
+        for e in range(nepochs):
+            plt.subplot(nepochs, len(bands), e*len(bands) + i +1)
+            plt.imshow(tims[nepochs*i + e].getImage(), **ima)
+            plt.xticks([]); plt.yticks([])
+            plt.title('%s #%i' % (band, e+1))
+    plt.suptitle('Images')
+    plt.savefig('%0.2f_%0.2f.png'%(fluxRatio,redshift))
+    """
     tractor = optimizeTractor(Tractor(tims,[galaxy]))
-    fluxList,fluxErrorList,magList,magErrorList=getFluxesAndMags(bands,tractor)
-    return fluxList, fluxErrorList, magList, magErrorList
+    fluxList,fluxEList,magList,magEList,fracs=getFluxesAndMags(bands,tractor)
+    fraction = getFraction(tractor)
+    data.fractions.append(fraction)
+    return fluxList, fluxEList, magList, magEList, fracs
             
-def makeTractorGalaxy(fluxRatio, bands, w, h):   
+def makeTractorGalaxy(bands, w, h):   
     galaxy = FixedCompositeGalaxy(PixPos(w/2, h/2),
                                   NanoMaggies(**dict([(band, 10.) for band in bands])), 
-                                  fluxRatio,
+                                  0.5,
                                   EllipseESoft(0., 0., 0.),
                                   EllipseESoft(0., 0., 0.))
     return galaxy
@@ -619,21 +649,48 @@ def optimizeTractor(tractor):
 def getFluxesAndMags(bands, tractor):
     bandFluxes, bandFluxErrors = [], []
     bandMags, bandMagErrors = [], []
+    fractions = []
     for band in bands:
         tractor.freezeAllRecursive()
+        tractor.catalog[0].thawParam('fracDev')
         tractor.thawPathsTo(band)
-        tractor.catalog[0].pos.freezeParams("y")
+        tractor.catalog[0].pos.freezeParams('y')
+        bandVar = tractor.optimize(variance=True, just_variance=True, shared_params=False)
         bandFlux = tractor.getParams()
-        bandVar = tractor.optimize(variance=True, just_variance=True, 
-                                   shared_params=False)
-        bandFluxes += list(bandFlux)
-        print "Flux:",bandFlux[0]
-        bandFluxErrors += list(bandVar)
-        npFlux, invvar = np.array(bandFlux), 1./np.array(bandVar)
-        bandMag,bandMagError=NanoMaggies.fluxErrorsToMagErrors(npFlux,invvar)
+        bandFluxes.append(bandFlux[0])
+        bandFluxErrors.append(bandVar[0])
+        fractions.append(bandFlux[1])
+        # convert to mag and mag error, assuming zeropoint of 22.5:
+        if bandFlux[0] <= 0:
+            bandMag = [99]
+            bandMagError = [0]
+        else:
+            npFlux, invvar = np.array([bandFlux[0]]), 1./np.array([bandVar[0]])
+            bandMag,bandMagError=NanoMaggies.fluxErrorsToMagErrors(npFlux,
+                                                                   invvar)
         bandMags += list(bandMag)
         bandMagErrors += list(bandMagError)
-    return bandFluxes,bandFluxErrors,bandMags,bandMagErrors
+    return bandFluxes,bandFluxErrors,bandMags,bandMagErrors,fractions
+    
+def getFraction(tractor):
+    tractor.freezeAllRecursive()
+    tractor.thawPathsTo('fracDev')
+    print "hi"
+    fraction = tractor.getParams()
+    print fraction
+    return fraction[0]
+
+
+
+def btRatiosAcrossBands(data):
+    ratios = {}
+    for i in xrange(len(data.filter_names)):
+        bulge = data.allFluxes[-1][i]
+        disk = data.allFluxes[0][i]
+        ratio = bulge/(bulge+disk)
+        ratios[data.filter_names[i]]=ratio
+    return ratios
+
 
 if __name__ == "__main__":
     main(sys.argv)
