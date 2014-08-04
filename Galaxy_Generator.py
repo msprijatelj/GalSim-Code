@@ -19,7 +19,7 @@ def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable/disable forced photometry, select forced band
-    data.useTractor = True
+    data.useTractor = False
     if data.useTractor == False:
         data.forced = False
     data.forcedFilter = "r"
@@ -31,11 +31,11 @@ def main(argv):
     data.noiseIterations = 5 if data.useTractor == True else 100
     data.noiseSigma = 0.1
     # Iterations to complete
-    fluxNum = 4
-    redshiftNum = 3
+    fluxNum = 1
+    redshiftNum = 1
     # Other parameters
-    fluxMin, fluxMax = 0.0, 1.0
-    redshiftMin, redshiftMax = 0.2, 1.0
+    fluxMin, fluxMax = 0.5, 0.5
+    redshiftMin, redshiftMax = 0.5, 0.5
     data.ratios = numpy.linspace(fluxMin,fluxMax,fluxNum)
     data.redshifts = numpy.linspace(redshiftMin,redshiftMax,redshiftNum)
     # Where to find and output data
@@ -635,7 +635,7 @@ def getFluxesAndMags(data, band, tractor):
     tractor.catalog[0].pos.freezeParams('y')
     bandVar = tractor.optimize(variance=True, just_variance=True, shared_params=False)
     bandFlux = tractor.getParams()
-    bandFlux[0]=bandFlux[0]/data.pixel_scale**2
+    bandFlux[0]=bandFlux[0]#/data.pixel_scale**2
     if bandFlux[0] <= 0:
         bandMag = [99]
         bandMagError = [0]
