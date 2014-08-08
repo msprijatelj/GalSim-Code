@@ -25,15 +25,15 @@ def main(argv):
     data.forcedFilter = "r"
     # Establish basic image parameters
     data.imageSize = 64
-    data.pixel_scale = 0.05 # arcseconds
+    data.pixel_scale = 0.2 # arcseconds
     data.noiseIterations = 5 if data.useTractor == True else 100
-    data.noiseSigma = 1e-15
+    data.noiseSigma = 0.1
     # Iterations to complete
-    fluxNum = 1
-    redshiftNum = 1
+    fluxNum = 4
+    redshiftNum = 3
     # Other parameters
-    fluxMin, fluxMax = 0.0, 0.0
-    redshiftMin, redshiftMax = 0.6, 0.6
+    fluxMin, fluxMax = 0.0, 1.0
+    redshiftMin, redshiftMax = 0.2, 1.0
     data.ratios = numpy.linspace(fluxMin,fluxMax,fluxNum)
     data.redshifts = numpy.linspace(redshiftMin,redshiftMax,redshiftNum)
     # Where to find and output data
@@ -738,7 +738,9 @@ def getFluxesAndMags(data, band, tractor):
         npFlux = np.array([bandFlux[0]])
         invvar = 1./np.array([bandVar[0]])
         bandMag,bandMagError=NanoMaggies.fluxErrorsToMagErrors(npFlux,invvar)
-    data.avgFluxes.append(bandFlux[0])
+    bright = tractor.catalog[0].getBrightness()
+    nativeFlux = tractor.getImage(0).getPhotoCal().brightnessToCounts(bright)
+    data.avgFluxes.append(nativeFlux)
     data.stDevs.append(bandVar[0])
     data.avgMags.append(bandMag[0])
     data.magStDevs.append(bandMagError[0])
