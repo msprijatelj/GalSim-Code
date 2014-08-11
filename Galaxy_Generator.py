@@ -25,15 +25,15 @@ def main(argv):
     data.forcedFilter = "r"
     # Establish basic image parameters
     data.imageSize = 64
-    data.pixel_scale = 0.2 # arcseconds
+    data.pixel_scale = 0.05 # arcseconds
     data.noiseIterations = 5 if data.useTractor == True else 100
-    data.noiseSigma = 0.1
+    data.noiseSigma = 1e-15
     # Iterations to complete
-    fluxNum = 4
-    redshiftNum = 3
+    fluxNum = 1
+    redshiftNum = 1
     # Other parameters
-    fluxMin, fluxMax = 0.0, 1.0
-    redshiftMin, redshiftMax = 0.2, 1.0
+    fluxMin, fluxMax = 0.0, 0.0
+    redshiftMin, redshiftMax = 0.6, 0.6
     data.ratios = numpy.linspace(fluxMin,fluxMax,fluxNum)
     data.redshifts = numpy.linspace(redshiftMin,redshiftMax,redshiftNum)
     # Where to find and output data
