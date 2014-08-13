@@ -6,6 +6,7 @@ import copy
 import math
 import string
 import matplotlib.pyplot as plt
+import pylab
 import numpy
 import logging
 import subprocess
@@ -14,18 +15,20 @@ import fitsio
 from tractor import *
 from tractor.galaxy import *
 
+##FIXME - Make everything run and compare in one run of the code
+
 # Top-level function
 def main(argv):
     class Struct(): pass
     data = Struct()
     # Enable mode of operation
-    data.arrayTest = False
-    data.useTractor = True
+    data.arrayTest = True
+    data.useTractor = False
     data.forced = False
     data.forcedFilter = "r"
     # Establish basic image parameters
-    data.imageSize = 64
-    data.pixel_scale = 0.05 # arcseconds
+    data.pixel_scale = 0.2 # arcseconds
+    data.imageSize = 64/data.pixel_scale*0.2
     data.noiseIterations = 5 if data.useTractor == True else 100
     data.noiseSigma = 1e-15
     # Iterations to complete
@@ -39,8 +42,7 @@ def main(argv):
     # Where to find and output data
     data.path, filename = os.path.split(__file__)
     datapath = os.path.abspath(os.path.join(data.path, "data/"))
-    data.zebrapath = "/Users/michaelprijatelj/Research/zebra-1.10/"
-    data.catpath = data.zebrapath + "examples/ML_notImproved/gal_catalog.cat"
+    data.catpath = "../zebra-1.10/examples/ML_notImproved/gal_catalog.cat"
     # In non-script code, use getLogger(__name__) at module scope instead.
     logging.basicConfig(format="%(message)s", level=logging.INFO, 
                         stream=sys.stdout)
@@ -101,7 +103,7 @@ def makeGalaxies(data):
     for fluxRatio in data.ratios:   
         shiftIndex = 0
         for redshift in data.redshifts:           
-            data.bdfinal,data.psfSigma=makeGalaxy(fluxRatio,redshift,data.SEDs)
+            data.bdfinal=makeGalaxy(data,fluxRatio,redshift)
             data.logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
             applyFilter(data,fluxRatio,redshift)
@@ -121,11 +123,12 @@ def makeGalaxies(data):
     print "B/T ratios across bands:\n",btRatiosAcrossBands(data)
 
 # Individual galaxy generator functions
-def makeGalaxy(fluxRatio, redshift, SEDs):
+def makeGalaxy(data, fluxRatio, redshift):
+    SEDs = data.SEDs
     # Construct the bulge, disk, and then the final profile from the two
     bulge, disk = makeBulge(redshift, SEDs), makeDisk(redshift, SEDs)  
-    bdfinal, psfSigma = makeFinal(fluxRatio, bulge, disk)
-    return bdfinal, psfSigma
+    bdfinal = makeFinal(data, fluxRatio, bulge, disk)
+    return bdfinal
 
 def makeBulge(redshift, SEDs):
     bulgeG1, bulgeG2, mono_bulge_HLR = 0.12, 0.07, 0.5
@@ -143,17 +146,19 @@ def makeDisk(redshift, SEDs):
     disk = disk.shear(g1=diskG1, g2=diskG2)
     return disk
     
-def makeFinal(fluxRatio, bulge, disk):
+def makeFinal(data, fluxRatio, bulge, disk):
     totalFlux = 4.8
     psf_FWHM, psf_beta = 0.6, 2.5
     bulgeMultiplier = fluxRatio * totalFlux
     diskMultiplier = (1 - fluxRatio) * totalFlux
     bdgal = 1.1 * (bulgeMultiplier*bulge+diskMultiplier*disk)
-    #PSF = galsim.Moffat(fwhm=psf_FWHM, beta=psf_beta)
-    PSF = galsim.Gaussian(fwhm=psf_FWHM)
-    psfSigma = PSF.getSigma()
+    PSF = galsim.Moffat(fwhm=psf_FWHM, beta=psf_beta)
+    #PSF = galsim.Gaussian(fwhm=psf_FWHM)
+    img = galsim.ImageF(data.imageSize, data.imageSize, scale=data.pixel_scale)
+    psfImage = PSF.drawImage(image = img)
+    psfImage.write("PSF.fits")
     bdfinal = galsim.Convolve([bdgal, PSF])    
-    return bdfinal, psfSigma
+    return bdfinal
 
 # Filter application, generation of images and data cube
 def applyFilter(data,fluxRatio,redshift):
@@ -209,7 +214,7 @@ def applyFilter(data,fluxRatio,redshift):
             print "\n"+"Using Forced Tractor:"+"\n"
             makeForcedTractorFluxList(data, fluxRatio, redshift)
     print "Flux data:",data.avgFluxes,data.stDevs
-    print
+    print    
     print "Magnitude data:",data.avgMags,data.magStDevs
     print 
     print "DeV-to-total ratios:",data.fractions
@@ -265,7 +270,7 @@ def makeModels(data):
     # Establish relevant model list and image bounds
     models = []
     modelFluxList = []
-    bounds = galsim.BoundsI(1,data.imageSize,1,data.imageSize)
+    bounds = galsim.BoundsI(1,int(data.imageSize),1,int(data.imageSize))
     totalAttempts = len(images)
     successes = 0.0
     for image in images:
@@ -637,7 +642,7 @@ def makeOptimizedTractor(data, band, fluxRatio, redshift):
 
 def makeTractorImages(data, band, fluxRatio, redshift):
     pixnoise = data.noiseSigma
-    psf_sigma = data.psfSigma/data.pixel_scale
+    #psf_sigma = data.psfSigma/data.pixel_scale
     nepochs = data.noiseIterations
     tims = []
     # Get images to convert to Tractor images
@@ -645,6 +650,8 @@ def makeTractorImages(data, band, fluxRatio, redshift):
     nims,h,w = cube.shape
     assert(nims == nepochs)    
     zeropoint = data.filters[band].zeropoint
+    psfCube = fitsio.read("PSF.fits")
+    psf = GaussianMixturePSF.fromStamp(psfCube)
     for k in range(nims):
         image = cube[k,:,:]
         # Scale fluxes/magnitudes for the appropriate zero-point magnitude
@@ -652,7 +659,7 @@ def makeTractorImages(data, band, fluxRatio, redshift):
         tim = Image(data=image, invvar=np.ones_like(image) / pixnoise**2,
                     photocal=LinearPhotoCal(photocalScale, band=band),
                     wcs=NullWCS(pixscale=pixscale),
-                    psf=NCircularGaussianPSF([psf_sigma], [1.0]))
+                    psf=psf)
         tims.append(tim)
     return tims, w, h
 
@@ -745,7 +752,7 @@ def getFluxesAndMags(data, band, tractor):
     data.avgMags.append(bandMag[0])
     data.magStDevs.append(bandMagError[0])
     data.fractions.append(bandFlux[1])
-    
+            
 def btRatiosAcrossBands(data):
     # Compare pure bulge and pure disk galaxy fluxes to get B/T ratios
     ratios = {}
