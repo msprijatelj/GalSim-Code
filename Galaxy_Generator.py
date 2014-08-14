@@ -18,7 +18,7 @@ from tractor.galaxy import *
 ##FIXME - Make everything run and compare in one run of the code
 
 ###############################################################################
-# Top-level function and initialization
+##FIXME - Top-level function and initialization
 ###############################################################################
 
 def main(argv):
@@ -27,13 +27,15 @@ def main(argv):
     initMain(data)
     initFluxesAndRedshifts(data)
     initSEDsAndFilters(data)
+    removeCatalogs(data)
     makeGalaxies(data)
 
 def initMain(data):
     # Enable mode of operation
-    data.arrayTest = True
-    data.useTractor = False
+    data.basic = False
     data.forced = False
+    data.Tractor = False
+    data.forcedTractor = True
     data.forcedFilter = "r"
     # Establish basic image parameters
     data.pixel_scale = 0.2 # arcseconds
@@ -113,7 +115,7 @@ def readInLSST(datapath, filter_names):
     return filters
 
 ###############################################################################
-# Galaxy generating functions
+##FIXME - Galaxy generating functions
 ###############################################################################
 
 def makeGalaxies(data):
@@ -121,7 +123,7 @@ def makeGalaxies(data):
     data.logger.info('Starting to generate chromatic bulge+disk galaxy')
     fluxIndex = 0
     # Collect lists of all fluxes, magnitudes, and deV-to-total ratios
-    initRedshiftLists(data)
+    initMakeGalaxies(data)
     # Iterate over all ratios and redshifts, keep track of indices for plots
     for fluxRatio in data.ratios:   
         shiftIndex = 0
@@ -130,22 +132,25 @@ def makeGalaxies(data):
             data.logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
             applyFilter(data,fluxRatio,redshift)
-            newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex)
+            #newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex)
             shiftIndex += 1
         fluxIndex += 1
+    """    
     figure1Setup(data)
     if data.useTractor == False:
         figure2Setup(data)
     figure3Setup(data)
-    outputRedshifts, loError, hiError = runZebraScript(data)
-    makeRedshiftPlot(data, outputRedshifts, loError, hiError)
-    #print "B/T ratios across bands:\n", btRatiosAcrossBands(data)
-
-def initRedshiftLists(data):
-    data.outShifts, data.loE, data.hiE = [], [], []
-    data.forOutShifts, data.forLoE, data.forHiE = [], [], []
-    data.tracOutShifts, data.tracLoE, data.tracHiE = [], [], []
-    data.forTracOutShifts, data.forTracLoE, data.forTracHiE = [], [], []
+    """
+    runAllZebraScripts(data)
+    print data.allFractions
+    
+    
+def initMakeGalaxies(data):
+    data.basicScript = 'callzebra_ML_notImproved_basic'
+    data.forScript = 'callzebra_ML_notImproved_forced'
+    data.tracScript = 'callzebra_ML_notImproved_tractor'
+    data.forTracScript = 'callzebra_ML_notImproved_forced_tractor'
+    data.allFractions = []
 
 # Individual galaxy generator functions
 def makeGalaxy(data, fluxRatio, redshift):
@@ -185,20 +190,9 @@ def makeFinal(data, fluxRatio, bulge, disk):
     bdfinal = galsim.Convolve([bdgal, PSF])    
     return bdfinal
 
-def initFilterLists(data):
-    data.fluxes, data.stDevs = [], []
-    data.forFluxes, data.forStDevs = [], []
-    data.tracFluxes, data.tracStDevs = [], []
-    data.forTracFluxes, data.forTracStDevs = [], []
-    data.mags, data.magDevs = [], []
-    data.forMags, data.forMagDevs = [], []
-    data.tracMags, data.tracMagDevs = [], []
-    data.forTracMags, data.forTracMagDevs = [], []
-    data.colors, data.colorStDevs = [], []
-    data.forColors, data.forColorStDevs = [], []
 
 ###############################################################################
-# Filter application and different magnitude calculation methods
+##FIXME - Filter application and different magnitude calculation methods
 ###############################################################################
 
 def applyFilter(data,fluxRatio,redshift):
@@ -210,17 +204,16 @@ def applyFilter(data,fluxRatio,redshift):
     filter_names = data.filter_names
     # Initialize data storage lists
     initFilterLists(data)
-    data.oldMagList, data.oldForMagList = []
     # Create list of models
     models = makeModels(data)
     for i in xrange(len(filter_names)):
         # Write the data cube
         images = imageSetup(data, fluxRatio, redshift, filter_names[i])
         # Make lists of flux using the enabled method
-        getBasicFluxMag(data, images, filter_names[i])
-        getForcedFluxMag(data, images, models, filter_names[i])
-    makeTractorFluxList(data, fluxRatio, redshift)
-    makeForcedTractorFluxList(data, fluxRatio, redshift)
+        if data.basic: getBasicFluxMag(data, images, filter_names[i])
+        if data.forced: getForcedFluxMag(data, images, models, filter_names[i])
+    if data.Tractor: makeTractorFluxList(data, fluxRatio, redshift)
+    if data.forcedTractor: makeForcedTractorFluxList(data, fluxRatio, redshift)
     # Using accumulated color lists, generate the magnitudes
     # embed acquired information in the data structure
     makeCatalog(data, data.mags, data.magDevs, "gal_catalog.cat")
@@ -228,6 +221,20 @@ def applyFilter(data,fluxRatio,redshift):
     makeCatalog(data, data.tracMags, data.tracMagDevs, "gal_trac_catalog.cat")
     makeCatalog(data, data.forTracMags, data.forTracMagDevs, 
                 "gal_for_trac_catalog.cat")
+
+def initFilterLists(data):
+    data.fluxes, data.stDevs = [], []
+    data.forFluxes, data.forStDevs = [], []
+    data.tracFluxes, data.tracStDevs = [], []
+    data.forTracFluxes, data.forTracStDevs = [], []
+    data.mags, data.magDevs = [], []
+    data.forMags, data.forMagDevs = [], []
+    data.tracMags, data.tracMagDevs = [], []
+    data.forTracMags, data.forTracMagDevs = [], []
+    data.colors, data.colorStDevs = [], []
+    data.forColors, data.forColorStDevs = [], []
+    data.oldMagList, data.oldForMagList = [], []
+    data.fractions = []
 
 def getBasicFluxMag(data, images, filter_name):
     print "\n"+"Using Basic FindAdaptiveMoment:"+"\n"
@@ -249,8 +256,8 @@ def getForcedFluxMag(data, images, models, filter_name):
                                                       filter_name)
     data.forFluxes.append(avgFlux), data.forStDevs.append(stDev)
     data.forMags.append(avgMag), data.forMagDevs.append(magStDev)
-    if oldForMagList != []:
-        color, colorStDev = getColors(data, oldForMagList)
+    if data.oldForMagList != []:
+        color, colorStDev = getColors(data, data.oldForMagList)
         data.forColors.append(color), data.forColorStDevs.append(colorStDev)
     # Update old flux list for next color calculation
     data.oldForMagList = data.magList
@@ -316,7 +323,8 @@ def makeModels(data):
             # Create new model using the Gaussian information above
             newModel = galsim.Gaussian(flux = flux, sigma = sigma)
             newModel = newModel.shear(g1=g1,g2=g2)
-            model = galsim.Image(bounds, scale=data.pixel_scale) 
+            model = galsim.Image(bounds, scale=data.pixel_scale)
+            newModel.drawImage(image = model)
             model.addNoise(data.gaussian_noise)
             models.append(model)
         else: modelFluxList.append(None)
@@ -409,7 +417,153 @@ def makeColorList(oldMagList, magList):
     return colorList
 
 ###############################################################################
-# Plot-generating functions
+##FIXME - Tractor-based flux and magnitude calculation
+###############################################################################
+
+# Tractor is written by Dustin Lang, documentation found here: 
+# http://thetractor.org/doc/index.html
+# Tractor functions, modified from Tractor documentation by Dustin Lang:
+# http://thetractor.org/doc/galsim.html
+def makeTractorFluxList(data, fluxRatio, redshift):
+    print "\n"+"Using Tractor:"+"\n"
+    bands = data.filter_names
+    for band in bands:
+        # Make an optimized Tractor object and get its flux and magnitude
+        tractor = makeOptimizedTractor(data, band, fluxRatio, redshift)
+        flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
+        data.tracFluxes.append(flux), data.tracStDevs.append(stDev)
+        data.tracMags.append(mag), data.tracMagDevs.append(magDev)
+        data.fractions.append(frac)
+    data.allFractions.append(data.fractions)
+
+def makeOptimizedTractor(data, band, fluxRatio, redshift):
+    # Get a list of Tractor images and their widths/heights
+    tims, w, h = makeTractorImages(data, band, fluxRatio, redshift)
+    # Make a rudimentary galaxy model using band given and image dimensions
+    galaxy = makeTractorGalaxy(band, w, h)
+    # Put tractor images and galaxy model into Tractor object and optimize
+    tractor = optimizeTractor(Tractor(tims,[galaxy]))
+    return tractor
+
+def makeTractorImages(data, band, fluxRatio, redshift):
+    pixnoise = data.noiseSigma
+    #psf_sigma = data.psfSigma/data.pixel_scale
+    nepochs = data.tractorIterations
+    tims = []
+    # Get images to convert to Tractor images
+    cube, pixscale = getBandImages(band,fluxRatio,redshift)
+    nims,h,w = cube.shape
+    zeropoint = data.filters[band].zeropoint
+    psfCube = fitsio.read("PSF.fits")
+    psf = GaussianMixturePSF.fromStamp(psfCube)
+    for k in range(nepochs):
+        image = cube[k,:,:]
+        # Scale fluxes/magnitudes for the appropriate zero-point magnitude
+        photocalScale = NanoMaggies.zeropointToScale(zeropoint)
+        tim = Image(data=image, invvar=np.ones_like(image) / pixnoise**2,
+                    photocal=LinearPhotoCal(photocalScale, band=band),
+                    wcs=NullWCS(pixscale=pixscale),
+                    psf=psf)
+        tims.append(tim)
+    return tims, w, h
+
+def getBandImages(band, fluxRatio,redshift):
+    # Read in GalSim FITS files, make cube of images using fitsio
+    filename = ("output_%s/gal_%s_%0.2f_%0.2f.fits" % (band,band,fluxRatio,
+                redshift))
+    print 'Band', band, 'Reading', filename
+    cube,hdr = fitsio.read(filename, header = True)    
+    print 'Read', cube.shape
+    pixscale = hdr['GS_SCALE']
+    print 'Pixel scale:', pixscale, 'arcsec/pix'
+    return cube, pixscale
+
+def makeForcedTractorFluxList(data, fluxRatio, redshift):
+    print "\n"+"Using Forced Tractor:"+"\n"
+    bands = data.filter_names
+    # Make optimized Tractor object using the forced filter band
+    forTractor=makeOptimizedTractor(data,data.forcedFilter,fluxRatio,redshift)
+    for band in bands:
+        # Make new tractor objects with parameters from forced Tractor object
+        tims, w, h = makeTractorImages(data, band, fluxRatio, redshift)
+        galaxy = makeTractorGalaxy(band, w, h)
+        galaxy.pos = forTractor.catalog[0].pos
+        galaxy.shapeExp = forTractor.catalog[0].shapeExp
+        galaxy.shapeDev = forTractor.catalog[0].shapeDev
+        # Optimize Tractor object, get fluxes and magnitudes
+        tractor = optimizeForcedTractor(Tractor(tims,[galaxy]), band)
+        flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
+        data.forTracFluxes.append(flux), data.forTracStDevs.append(stDev)
+        data.forTracMags.append(mag), data.forTracMagDevs.append(magDev)
+        data.fractions.append(frac)
+    data.allFractions.append(data.fractions)
+
+def makeTractorGalaxy(band, w, h): 
+    # Make a basic FixedCompositeGalaxy Tractor source
+    galaxy = FixedCompositeGalaxy(PixPos(w/2, h/2),
+                                  NanoMaggies(**dict([(band, 10.)])), 
+                                  0.5,
+                                  EllipseESoft(0., 0., 0.),
+                                  EllipseESoft(0., 0., 0.))
+    return galaxy
+    
+def optimizeTractor(tractor):
+    # Freeze all image calibration parameters
+    tractor.freezeParam('images')
+    # Take several linearized least squares steps
+    for i in range(20):
+        dlnp,X,alpha = tractor.optimize(shared_params=False)
+        print 'dlnp', dlnp
+        if dlnp < 1e-3:
+            break
+    return tractor 
+    
+def optimizeForcedTractor(tractor, band):
+    # Freeze all image calibration parameters
+    tractor.freezeParam('images')
+    # Freeze all non-band and non-fracDev parameters
+    tractor.freezeAllRecursive()
+    tractor.catalog[0].thawParam('fracDev')
+    tractor.thawPathsTo(band)
+    tractor.catalog[0].pos.freezeParams('y')
+    # Take several linearized least squares steps
+    for i in range(20):
+        dlnp,X,alpha = tractor.optimize(shared_params=False)
+        print 'dlnp', dlnp
+        if dlnp < 1e-3:
+            break
+    return tractor 
+
+def getFluxesAndMags(data, band, tractor):
+    # Isolate desired band and fracDev
+    tractor.freezeAllRecursive()
+    tractor.catalog[0].thawParam('fracDev')
+    tractor.thawPathsTo(band)
+    tractor.catalog[0].pos.freezeParams('y')
+    # Get variance and flux of optimized Tractor object
+    bandVar = tractor.optimize(variance=True, just_variance=True, 
+                               shared_params=False)
+    bandFlux = tractor.getParams()
+    bandFlux[0]=bandFlux[0]#/data.pixel_scale**2
+    # If flux is negative, tell ZEBRA to ignore the magnitude by making it 99
+    if bandFlux[0] <= 0:
+        bandMag = [99]
+        bandMagError = [0]
+    else:
+        # Get magnitudes from the flux and variance
+        npFlux = np.array([bandFlux[0]])
+        invvar = 1./np.array([bandVar[0]])
+        bandMag,bandMagError=NanoMaggies.fluxErrorsToMagErrors(npFlux,invvar)
+    bright = tractor.catalog[0].getBrightness()
+    flux = tractor.getImage(0).getPhotoCal().brightnessToCounts(bright)
+    stDev = bandVar[0]
+    mag = bandMag[0]
+    magDev = bandMagError[0]
+    frac = bandFlux[1]
+    return flux, stDev, mag, magDev, frac
+
+###############################################################################
+##FIXME - Plot-generating functions
 ###############################################################################
 
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
@@ -519,8 +673,7 @@ def figure3Setup(data):
         plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
     plt.close()
 
-
-def makeRedshiftPlot(data, outputRedshifts, loError, hiError):
+def makeRedshiftPlot(data, outputRedshifts, loError, hiError, mark, name):
     # Create plot for redshifts, plot output vs expected
     outShifts = copy.deepcopy(outputRedshifts)
     colors = ["b","c","g","y","r","m"]
@@ -536,17 +689,15 @@ def makeRedshiftPlot(data, outputRedshifts, loError, hiError):
             usedErrors[0].append(errors[0].pop(0))
             usedErrors[1].append(errors[1].pop(0))
         plt.errorbar(redshifts, usedShifts, usedErrors, None, barsabove = True,
-                     marker = "o", linestyle = "none", 
+                     marker = mark, linestyle = "none", 
                      mfc = "%s" %color, capsize = 10, ecolor = "%s"%color,
-                     label = "%0.2f B/T" % (fluxRatio))
-    redshiftLine = linspace(0,2)
-    plt.plot(redshiftLine, redshiftLine, linewidth=1,
-             label = "Expected Redshifts")
-    figure4Setup(data)
-    
+                     label = "%0.2f B/T, %s" % (fluxRatio, name))
+
 def figure4Setup(data):
     # Finallizing redshift plot
     plt.figure(4)
+    redshiftLine = linspace(0,2)
+    plt.plot(redshiftLine,redshiftLine,linewidth=1,label="Expected Redshifts")
     plt.xlim([0,2])
     plt.ylim(0)
     plt.xlabel('Input Redshifts')
@@ -554,6 +705,11 @@ def figure4Setup(data):
     plt.grid()
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
+    plt.title("Measured Redshifts vs. Actual Redshifts, All Methods")
+    saveName = "Redshifts_all.png"
+    plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
+    
+    """
     if data.useTractor == True:
         plt.title("Measured Redshifts vs. Actual Redshifts, Tractor")
         saveName = "Redshifts-Tractor.png"
@@ -567,11 +723,10 @@ def figure4Setup(data):
                   +'forced fit at {}-band'.format(data.forcedFilter))
         saveName = "Redshifts-Forced_{}.png".format(data.forcedFilter)
         plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
-    plt.close()
-
-
+    """
+    
 ###############################################################################
-# ZEBRA read/write files
+##FIXME - ZEBRA read/write files
 ###############################################################################
 
 # make ZEBRA-friendly output file
@@ -608,15 +763,39 @@ def makeCatalog(data, avgMags, magStDevs, catName):
         for j in xrange(len(fluxData[0])):
             contents += (str(fluxData[i][j]) + " ")
     contents += ("\n")
-    if not os.path.exists(catpath):
+    if not os.path.exists(catPath):
         writeFile(catPath, contents)
     else:
         writeFile(catPath, contents, "a")
 
-def runZebraScript(data):
+def runAllZebraScripts(data):
+    if data.basic:
+        outShifts, loE, hiE = runZebraScript(data, data.basicScript)
+        makeRedshiftPlot(data, outShifts, loE, hiE, "o",
+                         "Basic")
+        print np.array(outShifts), np.array(loE), np.array(hiE)
+    if data.forced:
+        forOutShifts, forLoE, forHiE = runZebraScript(data, data.forScript)
+        makeRedshiftPlot(data, forOutShifts, forLoE, forHiE, "^",
+                         "Forced")
+        print np.array(forOutShifts), np.array(forLoE), np.array(forHiE)
+    if data.Tractor:
+        tracOutShifts, tracLoE, tracHiE = runZebraScript(data, data.tracScript)
+        makeRedshiftPlot(data, tracOutShifts, tracLoE, tracHiE, "s",
+                         "Tractor")
+        print np.array(tracOutShifts), np.array(tracLoE), np.array(tracHiE)
+    if data.forcedTractor:
+        forTrOutShifts,forTrLoE,forTrHiE=runZebraScript(data, 
+                                                        data.forTracScript)
+        makeRedshiftPlot(data, forTrOutShifts,forTrLoE,forTrHiE, "v",
+                         "Forced Tractor")
+        print np.array(forTrOutShifts),np.array(forTrLoE),np.array(forTrHiE)
+    figure4Setup(data)
+
+def runZebraScript(data, scriptName):
     # Move to directory where ZEBRA scripts are located, run script
     os.chdir("../zebra-1.10/scripts/")
-    subprocess.Popen(['./callzebra_ML_notImproved_2']).wait()
+    subprocess.Popen(['./' + scriptName]).wait()
     datPath = '../examples/ML_notImproved/ML.dat'
     # Grab redshifts from the ZEBRA output ML.dat file
     (rs, loE, hiE) = readRedshifts(datPath)
@@ -628,29 +807,33 @@ def readRedshifts(filename):
     extractedList = extractData(readFile(filename))
     redshifts, loErrors, hiErrors = [], [], []
     for line in extractedList:
-        (items, isWhitespace) = ([""], True)
-        extractionIndex = charIndex = 0
-        # Set up system that ignores whitespace and takes consecutive non-
-        # whitespace characters as a single list element, convert to floats
-        while charIndex < len(line):
-            char = line[charIndex]
-            if isWhitespace == False:
-                if char == " ": 
-                    isWhitespace = True
-                    items.append("")
-                    extractionIndex += 1
-                else: items[extractionIndex] += char
-            else:
-                if char != " ":
-                    isWhitespace = False
-                    items[extractionIndex] += char
-            charIndex += 1
+        items = readOutputFromLine(line)
         redshifts.append(float(items[2]))
         # Errors could be from columns 21 to 28 (alternating lo/hi)   
         loErrors.append(abs(float(items[20]) - float(items[2])))
         hiErrors.append(abs(float(items[21]) - float(items[2])))
     return redshifts, loErrors, hiErrors
-    
+
+def readOutputFromLine(line):
+    (items, isWhitespace) = ([""], True)
+    extractionIndex = charIndex = 0
+    # Set up system that ignores whitespace and takes consecutive non-
+    # whitespace characters as a single list element, convert to floats
+    while charIndex < len(line):
+        char = line[charIndex]
+        if isWhitespace == False:
+            if char == " ": 
+                isWhitespace = True
+                items.append("")
+                extractionIndex += 1
+            else: items[extractionIndex] += char
+        else:
+            if char != " ":
+                isWhitespace = False
+                items[extractionIndex] += char
+        charIndex += 1
+    return items
+
 def extractData(contents):
     # Take all relevant lines (i.e. those without '#') and store them in a list
     # of lines.
@@ -659,152 +842,9 @@ def extractData(contents):
     for i in xrange(len(contentList)):
         if contentList[i][0] != "#":  extractedList.append(contentList[i])
     return extractedList
-
-###############################################################################
-# Tractor-based flux and magnitude calculation
-###############################################################################
-
-# Tractor is written by Dustin Lang, documentation found here: 
-# http://thetractor.org/doc/index.html
-# Tractor functions, modified from Tractor documentation by Dustin Lang:
-# http://thetractor.org/doc/galsim.html
-def makeTractorFluxList(data, fluxRatio, redshift):
-    print "\n"+"Using Tractor:"+"\n"
-    bands = data.filter_names
-    for band in bands:
-        # Make an optimized Tractor object and get its flux and magnitude
-        tractor = makeOptimizedTractor(data, band, fluxRatio, redshift)
-        flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
-        data.tracFluxes.append(flux), data.tracStDevs.append(stDev)
-        data.tracMags.append(mag), data.tracMagDevs.append(magDev)
-
-def makeOptimizedTractor(data, band, fluxRatio, redshift):
-    # Get a list of Tractor images and their widths/heights
-    tims, w, h = makeTractorImages(data, band, fluxRatio, redshift)
-    # Make a rudimentary galaxy model using band given and image dimensions
-    galaxy = makeTractorGalaxy(band, w, h)
-    # Put tractor images and galaxy model into Tractor object and optimize
-    tractor = optimizeTractor(Tractor(tims,[galaxy]))
-    return tractor
-
-def makeTractorImages(data, band, fluxRatio, redshift):
-    pixnoise = data.noiseSigma
-    #psf_sigma = data.psfSigma/data.pixel_scale
-    nepochs = data.noiseIterations
-    tims = []
-    # Get images to convert to Tractor images
-    cube, pixscale = getBandImages(band,fluxRatio,redshift)
-    nims,h,w = cube.shape
-    assert(nims == nepochs)    
-    zeropoint = data.filters[band].zeropoint
-    psfCube = fitsio.read("PSF.fits")
-    psf = GaussianMixturePSF.fromStamp(psfCube)
-    for k in range(nims):
-        image = cube[k,:,:]
-        # Scale fluxes/magnitudes for the appropriate zero-point magnitude
-        photocalScale = NanoMaggies.zeropointToScale(zeropoint)
-        tim = Image(data=image, invvar=np.ones_like(image) / pixnoise**2,
-                    photocal=LinearPhotoCal(photocalScale, band=band),
-                    wcs=NullWCS(pixscale=pixscale),
-                    psf=psf)
-        tims.append(tim)
-    return tims, w, h
-
-def getBandImages(band, fluxRatio,redshift):
-    # Read in GalSim FITS files, make cube of images using fitsio
-    filename = ("output_%s/gal_%s_%0.2f_%0.2f.fits" % (band,band,fluxRatio,
-                redshift))
-    print 'Band', band, 'Reading', filename
-    cube,hdr = fitsio.read(filename, header = True)    
-    print 'Read', cube.shape
-    pixscale = hdr['GS_SCALE']
-    print 'Pixel scale:', pixscale, 'arcsec/pix'
-    return cube, pixscale
-
-def makeForcedTractorFluxList(data, fluxRatio, redshift):
-    print "\n"+"Using Forced Tractor:"+"\n"
-    bands = data.filter_names
-    # Make optimized Tractor object using the forced filter band
-    forTractor=makeOptimizedTractor(data,data.forcedFilter,fluxRatio,redshift)
-    for band in bands:
-        # Make new tractor objects with parameters from forced Tractor object
-        tims, w, h = makeTractorImages(data, band, fluxRatio, redshift)
-        galaxy = makeTractorGalaxy(band, w, h)
-        galaxy.pos = forTractor.catalog[0].pos
-        galaxy.shapeExp = forTractor.catalog[0].shapeExp
-        galaxy.shapeDev = forTractor.catalog[0].shapeDev
-        # Optimize Tractor object, get fluxes and magnitudes
-        tractor = optimizeForcedTractor(Tractor(tims,[galaxy]), band)
-        flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
-        data.forTracFluxes.append(flux), data.forTracStDevs.append(stDev)
-        data.forTracMags.append(mag), data.forTracMagDevs.append(magDev)
-
-def makeTractorGalaxy(band, w, h): 
-    # Make a basic FixedCompositeGalaxy Tractor source
-    galaxy = FixedCompositeGalaxy(PixPos(w/2, h/2),
-                                  NanoMaggies(**dict([(band, 10.)])), 
-                                  0.5,
-                                  EllipseESoft(0., 0., 0.),
-                                  EllipseESoft(0., 0., 0.))
-    return galaxy
     
-def optimizeTractor(tractor):
-    # Freeze all image calibration parameters
-    tractor.freezeParam('images')
-    # Take several linearized least squares steps
-    for i in range(20):
-        dlnp,X,alpha = tractor.optimize(shared_params=False)
-        print 'dlnp', dlnp
-        if dlnp < 1e-3:
-            break
-    return tractor 
-    
-def optimizeForcedTractor(tractor, band):
-    # Freeze all image calibration parameters
-    tractor.freezeParam('images')
-    # Freeze all non-band and non-fracDev parameters
-    tractor.freezeAllRecursive()
-    tractor.catalog[0].thawParam('fracDev')
-    tractor.thawPathsTo(band)
-    tractor.catalog[0].pos.freezeParams('y')
-    # Take several linearized least squares steps
-    for i in range(20):
-        dlnp,X,alpha = tractor.optimize(shared_params=False)
-        print 'dlnp', dlnp
-        if dlnp < 1e-3:
-            break
-    return tractor 
-
-def getFluxesAndMags(data, band, tractor):
-    # Isolate desired band and fracDev
-    tractor.freezeAllRecursive()
-    tractor.catalog[0].thawParam('fracDev')
-    tractor.thawPathsTo(band)
-    tractor.catalog[0].pos.freezeParams('y')
-    # Get variance and flux of optimized Tractor object
-    bandVar = tractor.optimize(variance=True, just_variance=True, 
-                               shared_params=False)
-    bandFlux = tractor.getParams()
-    bandFlux[0]=bandFlux[0]#/data.pixel_scale**2
-    # If flux is negative, tell ZEBRA to ignore the magnitude by making it 99
-    if bandFlux[0] <= 0:
-        bandMag = [99]
-        bandMagError = [0]
-    else:
-        # Get magnitudes from the flux and variance
-        npFlux = np.array([bandFlux[0]])
-        invvar = 1./np.array([bandVar[0]])
-        bandMag,bandMagError=NanoMaggies.fluxErrorsToMagErrors(npFlux,invvar)
-    bright = tractor.catalog[0].getBrightness()
-    flux = tractor.getImage(0).getPhotoCal().brightnessToCounts(bright)
-    stDev = bandVar[0]
-    mag = bandMag[0]
-    magDev = bandMagError[0]
-    frac = bandflux[1]
-    return flux, stDev, mag, magDev, frac
-
 ###############################################################################
-# Extra test functions
+##FIXME - Extra test functions
 ###############################################################################
        
 def btRatiosAcrossBands(data):
