@@ -438,53 +438,33 @@ def makeTractorFluxList(data, fluxRatio, redshift):
     data.allFractions.append(data.fractions)
 
 def makeOptimizedTractor(data, band, fluxRatio, redshift):
+    zeropoint_mag = data.filters[band].zeropoint
     # Get a list of Tractor images and their widths/heights
-    nepochs = 1
     tims, w, h = makeTractorImages(data, band, fluxRatio, redshift)
-    # Make a rudimentary galaxy model using band given and image dimensions
-
     # Put tractor images and galaxy model into Tractor object and optimize
-    fluxes, stDevs, mags, magDevs, fracs = [], [], [], [], []
+    fluxes, mags, fracs = [], [], []
+    bulgeFluxes, diskFluxes, bulgeMags, diskMags = [], [], [], []
     for tim in tims:
+        # Make a rudimentary galaxy model using band given and image dimensions
         galaxy = makeTractorGalaxy(band, w, h)
         tractor = optimizeTractor(Tractor([tim],[galaxy]))
-        flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
+        flux, mag = getFluxesAndMags(data,band,tractor)
+        frac = galaxy.fracDev.getClippedValue()
         fluxes.append(flux), mags.append(mag), fracs.append(frac)
-        print
-        print "================================================================"
-        print frac
-        print "================================================================"
-        print
-        ima = dict(interpolation='nearest', origin='lower', cmap='gray',
-                   vmin=None, vmax=None)
-        plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.92)
-        plt.clf()
-        for i,band in enumerate(band):
-            for e in range(nepochs):
-                plt.subplot(nepochs, len(band), e*len(band) + i +1)
-                plt.imshow(tims[nepochs*i + e].getImage(), **ima)
-                plt.xticks([]); plt.yticks([])
-                plt.title('%s #%i' % (band, e+1))
-        plt.suptitle('Images')
-        plt.savefig('8%s.png'%band)
-    
-        # Plot initial models:
-        mods = [tractor.getModelImage(0)]
-        plt.clf()
-        for i,band in enumerate(band):
-            for e in range(nepochs):
-                plt.subplot(nepochs, len(band), e*len(band) + i +1)
-                plt.imshow(mods[nepochs*i + e], **ima)
-                plt.xticks([]); plt.yticks([])
-                plt.title('%s #%i' % (band, e+1))
-        plt.suptitle('Initial models')
-        plt.savefig('9%s.png'%band)
-        assert False
+        (bulgeFlux, diskFlux) = (flux*frac, flux*(1-frac))
+        bulgeFluxes.append(bulgeFlux), diskFluxes.append(diskFlux)
+        bulgeMag = -2.5 * numpy.log10(bulgeFlux) + zeropoint_mag
+        diskMag = -2.5 * numpy.log10(diskFlux) + zeropoint_mag
+        bulgeMags.append(bulgeMag), diskMags.append(diskMag)
     flux, stDev = findAvgStDev(fluxes)
+    bulgeFlux, bulgeStDev = findAvgStDev(bulgeFluxes)
+    diskFlux, diskStDev = findAvgStDev(diskFluxes)
     mag, magDev = findAvgStDev(mags)
+    
+    bulgeMag = -2.5 * numpy.log10(bulgeFlux) + zeropoint_mag
     print
     print "================================================================"
-    print band, flux, stDev, mag, magDev
+    print band, flux, stDev, mag, tempMag
     print "================================================================"
     print
     frac, fracDev = findAvgStDev(fracs)
@@ -538,7 +518,7 @@ def makeForcedTractorFluxList(data, fluxRatio, redshift):
         galaxy.shapeDev = forTractor.catalog[0].shapeDev
         # Optimize Tractor object, get fluxes and magnitudes
         tractor = optimizeForcedTractor(Tractor(tims,[galaxy]), band)
-        flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
+        flux, mag = getFluxesAndMags(data,band,tractor)
         data.forTracFluxes.append(flux), data.forTracStDevs.append(stDev)
         data.forTracMags.append(mag), data.forTracMagDevs.append(magDev)
         data.fractions.append(frac)
@@ -548,7 +528,7 @@ def makeTractorGalaxy(band, w, h):
     # Make a basic FixedCompositeGalaxy Tractor source
     galaxy = FixedCompositeGalaxy(PixPos(w/2, h/2),
                                   NanoMaggies(**dict([(band, 10.)])), 
-                                  0.5,
+                                  SoftenedFracDev(0.5),
                                   EllipseESoft(0., 0., 0.),
                                   EllipseESoft(0., 0., 0.))
     return galaxy
@@ -602,11 +582,8 @@ def getFluxesAndMags(data, band, tractor):
         bandMag,bandMagError=NanoMaggies.fluxErrorsToMagErrors(npFlux,invvar)
     bright = tractor.catalog[0].getBrightness()
     flux = tractor.getImage(0).getPhotoCal().brightnessToCounts(bright)
-    stDev = bandVar[0]
     mag = bandMag[0]
-    magDev = bandMagError[0]
-    frac = bandFlux[1]
-    return flux, stDev, mag, magDev, frac
+    return flux, mag
 
 ###############################################################################
 ##FIXME - Plot-generating functions
