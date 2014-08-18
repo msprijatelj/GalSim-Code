@@ -40,7 +40,7 @@ def initMain(data):
     data.pixel_scale = 0.2 # arcseconds
     data.imageSize = 64/data.pixel_scale*0.2
     data.noiseIterations = 100
-    data.tractorIterations = 5
+    data.tractorIterations = 8
     data.noiseSigma = 1e-15
 
 def initFluxesAndRedshifts(data):
@@ -439,15 +439,47 @@ def makeTractorFluxList(data, fluxRatio, redshift):
 
 def makeOptimizedTractor(data, band, fluxRatio, redshift):
     # Get a list of Tractor images and their widths/heights
+    nepochs = 1
     tims, w, h = makeTractorImages(data, band, fluxRatio, redshift)
     # Make a rudimentary galaxy model using band given and image dimensions
-    galaxy = makeTractorGalaxy(band, w, h)
+
     # Put tractor images and galaxy model into Tractor object and optimize
     fluxes, stDevs, mags, magDevs, fracs = [], [], [], [], []
     for tim in tims:
+        galaxy = makeTractorGalaxy(band, w, h)
         tractor = optimizeTractor(Tractor([tim],[galaxy]))
         flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
         fluxes.append(flux), mags.append(mag), fracs.append(frac)
+        print
+        print "================================================================"
+        print frac
+        print "================================================================"
+        print
+        ima = dict(interpolation='nearest', origin='lower', cmap='gray',
+                   vmin=None, vmax=None)
+        plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.92)
+        plt.clf()
+        for i,band in enumerate(band):
+            for e in range(nepochs):
+                plt.subplot(nepochs, len(band), e*len(band) + i +1)
+                plt.imshow(tims[nepochs*i + e].getImage(), **ima)
+                plt.xticks([]); plt.yticks([])
+                plt.title('%s #%i' % (band, e+1))
+        plt.suptitle('Images')
+        plt.savefig('8%s.png'%band)
+    
+        # Plot initial models:
+        mods = [tractor.getModelImage(0)]
+        plt.clf()
+        for i,band in enumerate(band):
+            for e in range(nepochs):
+                plt.subplot(nepochs, len(band), e*len(band) + i +1)
+                plt.imshow(mods[nepochs*i + e], **ima)
+                plt.xticks([]); plt.yticks([])
+                plt.title('%s #%i' % (band, e+1))
+        plt.suptitle('Initial models')
+        plt.savefig('9%s.png'%band)
+        assert False
     flux, stDev = findAvgStDev(fluxes)
     mag, magDev = findAvgStDev(mags)
     print
