@@ -6,7 +6,6 @@ import copy
 import math
 import string
 import matplotlib.pyplot as plt
-import pylab
 import numpy
 import logging
 import subprocess
@@ -447,7 +446,6 @@ def makeOptimizedTractor(data, band, fluxRatio, redshift):
 
 def makeTractorImages(data, band, fluxRatio, redshift):
     pixnoise = data.noiseSigma
-    #psf_sigma = data.psfSigma/data.pixel_scale
     nepochs = data.tractorIterations
     tims = []
     # Get images to convert to Tractor images
@@ -613,7 +611,7 @@ def figure1Setup(data):
     plt.show()
     plt.ylabel('Magnitude of the Flux (Arbitrary Units)')
     if data.useTractor == True:
-        plt.title('Flux across bands at varied flux ratios and redshifts, Tractor')
+        plt.title('Flux across bands for flux ratios and redshifts, Tractor')
         saveName = "Flux_Plot-Tractor.png"
         plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
     elif data.forced == False:
@@ -659,7 +657,7 @@ def figure3Setup(data):
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
     if data.useTractor == True:
-        plt.title('Mag across bands at varied flux ratios and redshifts, Tractor')
+        plt.title('Mag across bands for flux ratios and redshifts, Tractor')
         saveName = "Mag_Plot-Tractor.png"
         plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
     elif data.forced == False:
@@ -708,23 +706,7 @@ def figure4Setup(data):
     plt.title("Measured Redshifts vs. Actual Redshifts, All Methods")
     saveName = "Redshifts_all.png"
     plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
-    
-    """
-    if data.useTractor == True:
-        plt.title("Measured Redshifts vs. Actual Redshifts, Tractor")
-        saveName = "Redshifts-Tractor.png"
-        plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
-    elif data.forced == False:
-        plt.title('Measured Redshifts vs. Actual Redshifts')
-        saveName = "Redshifts.png"
-        plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
-    else:
-        plt.title("Measured Redshifts vs. Actual Redshifts; "
-                  +'forced fit at {}-band'.format(data.forcedFilter))
-        saveName = "Redshifts-Forced_{}.png".format(data.forcedFilter)
-        plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
-    """
-    
+        
 ###############################################################################
 ##FIXME - ZEBRA read/write files
 ###############################################################################
