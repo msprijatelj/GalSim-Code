@@ -1,0 +1,197 @@
+#!/bin/bash
+
+#########################
+#			#
+# Start skript for 	#
+# ZEBRA			#
+#			#
+# by Robert Feldmann 	#
+# 2005/06		#
+#			#
+#########################
+
+#######################
+# setting parameters #
+#######################
+
+renice 19 -p $$
+
+
+
+## PATHS ##
+
+EXECPATH=/usr/local/bin
+CATALOGPATH=../examples/ML_notImproved
+CATALOG=gal_catalog.cat
+CATALOGDEF=gal_catalog.cat.def
+OUTPUTPATH=../examples/ML_notImproved
+OUTPUTBASE="ML"
+FILTERPATH=../examples/filters
+TEMPLATEPATH=../examples/templates
+FLUXPATH=../examples/ML_notImproved
+PRIORPATH=../examples/ML_notImproved
+
+## RED SHIFT LIMITS ##
+
+ZMIN="0.0"
+ZMAX="2.0"
+DZ="0.0025"
+LOGZBIN=" --log-zBin "
+
+## BAYESIAN AND MAXIMUM LIKELIHOOD PARAMETERS ##
+
+CALCLIKELIHOOD=" -k "
+#CALCBAYESIAN=" -b "
+SMOOTHPRIOR=" --smoothprior "
+SMOOTHT=" --smootht 0.05 "
+SMOOTHZ=" --smoothz 0.1 "
+SMOOTHZMODE=" --smoothz-mode 0 "
+
+SMOOTHFILTER=" --smooth-filter 0.01 "
+SMOOTHTEMPLATE=" --smooth-template 0.01 "
+SMOOTHMODE=" --smooth-mode 1 "
+
+#POSTERIOR1=" --posterior full "
+#POSTERIOR2=" --posterior t "
+#POSTERIOR3=" --posterior z "
+POSTERIOR4=" --posterior pz "
+#LIKELIHOOD1=" --likelihood full "
+#LIKELIHOOD2=" --likelihood t "
+#LIKELIHOOD3=" --likelihood z "
+LIKELIHOOD4=" --likelihood pz "
+#DUMP1=" --dump besttemplate "
+#DUMP2=" --dump templates "
+#DUMP3=" --dump templates2 "
+#DUMP4=" --dump fluxes "
+DUMP5=" --dump residual "
+#SINGLE=" --single "
+
+## MESH RELATED
+USEMESH=" --use-mesh "
+MESHLAMBDAMIN=" --mesh-lambda-min 500 "
+MESHLAMBDAMAX=" --mesh-lambda-max 25000 "
+MESHLAMBDARES=" --mesh-lambda-res 2 "
+
+## INTERPOLATION ##
+
+LININTERPOL=0
+LOGINTERPOL=5
+
+## absolute magnitude cut in B-band ##
+
+MBMODE=" --mb-mode 2 "
+MBLOW=" -m -24 "
+MBHIGH=" -M -13 "
+
+## OTHER OPTIONS ##
+
+#RIGHTZ=" --rightz "		# fit type only (take redshift from catalog)
+PHOTONFLUX="0 "	# 0 photon 1 energy
+IGABSORPTION=" -a 0 "
+ALLOWMISSINGERROR=" --allow-missing-error "
+VERBOSITY=" --verbose 1"
+PRESERVEERRORS=" --preserve-errors-output "
+PRESERVEFORMAT=" --preserve-catalog-format "
+
+## TEMPLATE FLUX OPTIONS ##
+
+#LOADFLUX=" --load-flux"
+SAVEFLUX=" --save-flux"
+FLUXBASE="FluxFile"
+
+## PRIOR OPTIONS ##
+
+#LOADPRIOR=" --load-prior "
+SAVEPRIOR=" --save-prior "
+SAVEPRIORITER=" --save-prior-iterative "
+CALCPRIOR=" --calc-prior "
+CALCPRIORMODE=" --calc-prior-mode 0 "	# 0 prior(T,z)  1 prior(best_T,z)
+MAXITERATIONS=" --max-iterations 5 "
+
+PRIORBASE="prior_z${ZMIN}_Z${ZMAX}_d${DZ}_i${LOGINTERPOL}_I${LOGINTERPOLMODE}_l${LININTERPOL}_L${LININTERPOLMODE}_P${PHOTONFLUX}.dat"
+PRIORLOADBASE=" --prior-load-base prior_z0.0_Z8.0_d0.0025_i0_I_l0_L_P.dat"
+
+
+########################
+# better making a copy #
+########################
+if [ -f $OUTPUTPATH/$0 ]
+then
+  TEMPNAME=`mktemp`
+  cp ./$0 $TEMPNAME
+  cp ${OUTPUTPATH}/$0 ${OUTPUTPATH}/${0}.old
+fi
+cp $TEMPNAME $OUTPUTPATH/$0
+
+#########################
+# starting the C++ code #
+#########################
+
+zebra \
+-C $CATALOGPATH \
+-c $CATALOG \
+-d $CATALOGDEF \
+-O $OUTPUTPATH \
+-o $OUTPUTBASE \
+-X $FLUXPATH \
+-x $FLUXBASE \
+-P $PRIORPATH \
+-p $PRIORBASE \
+-F $FILTERPATH \
+-T $TEMPLATEPATH \
+-i $LOGINTERPOL \
+-l $LININTERPOL \
+-z $ZMIN \
+-Z $ZMAX \
+-D $DZ \
+$LOGZBIN \
+--flux-type $PHOTONFLUX \
+$FLUXENTRIES \
+$USEMESH \
+$CHI2ADD \
+$RIGHTZ \
+$COLLAPSED \
+$SHOWTABLE \
+$MBMODE \
+$MBLOW \
+$MBHIGH \
+$ALLOWMISSINGERROR \
+$VERBOSITY \
+$LOADFLUX \
+$SAVEFLUX \
+$LOADPRIOR \
+$SAVEPRIOR \
+$SAVEPRIORITER \
+$CALCPRIOR \
+$CALCPRIORMODE \
+$MAXITERATIONS \
+$ZAMORANI \
+$IGABSORPTION \
+$CALCLIKELIHOOD \
+$CALCBAYESIAN \
+$SMOOTHPRIOR \
+$SMOOTHT \
+$SMOOTHZ \
+$SMOOTHFILTER \
+$SMOOTHTEMPLATE \
+$SMOOTHMODE \
+$POSTERIOR1 \
+$POSTERIOR2 \
+$POSTERIOR3 \
+$POSTERIOR4 \
+$LIKELIHOOD1 \
+$LIKELIHOOD2 \
+$LIKELIHOOD3 \
+$LIKELIHOOD4 \
+$DUMP1 \
+$DUMP2 \
+$DUMP3 \
+$DUMP4 \
+$DUMP5 \
+$SINGLE \
+$PRESERVEERRORS \
+$PRESERVEFORMAT \
+$USEMESH \
+$MESHLAMBDAMIN \
+$MESHLAMBDAMAX \
+$MESHLAMBDARES
