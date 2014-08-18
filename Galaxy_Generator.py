@@ -33,8 +33,8 @@ def initMain(data):
     # Enable mode of operation
     data.basic = False
     data.forced = False
-    data.Tractor = False
-    data.forcedTractor = True
+    data.Tractor = True
+    data.forcedTractor = False
     data.forcedFilter = "r"
     # Establish basic image parameters
     data.pixel_scale = 0.2 # arcseconds
@@ -429,10 +429,12 @@ def makeTractorFluxList(data, fluxRatio, redshift):
     for band in bands:
         # Make an optimized Tractor object and get its flux and magnitude
         tractor = makeOptimizedTractor(data, band, fluxRatio, redshift)
+        """
         flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
         data.tracFluxes.append(flux), data.tracStDevs.append(stDev)
         data.tracMags.append(mag), data.tracMagDevs.append(magDev)
         data.fractions.append(frac)
+        """
     data.allFractions.append(data.fractions)
 
 def makeOptimizedTractor(data, band, fluxRatio, redshift):
@@ -441,8 +443,22 @@ def makeOptimizedTractor(data, band, fluxRatio, redshift):
     # Make a rudimentary galaxy model using band given and image dimensions
     galaxy = makeTractorGalaxy(band, w, h)
     # Put tractor images and galaxy model into Tractor object and optimize
-    tractor = optimizeTractor(Tractor(tims,[galaxy]))
-    return tractor
+    fluxes, stDevs, mags, magDevs, fracs = [], [], [], [], []
+    for tim in tims:
+        tractor = optimizeTractor(Tractor([tim],[galaxy]))
+        flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
+        fluxes.append(flux), mags.append(mag), fracs.append(frac)
+    flux, stDev = findAvgStDev(fluxes)
+    mag, magDev = findAvgStDev(mags)
+    print
+    print "================================================================"
+    print band, flux, stDev, mag, magDev
+    print "================================================================"
+    print
+    frac, fracDev = findAvgStDev(fracs)
+    data.tracFluxes.append(flux), data.tracStDevs.append(stDev)
+    data.tracMags.append(mag), data.tracMagDevs.append(magDev)
+    data.fractions.append(frac)
 
 def makeTractorImages(data, band, fluxRatio, redshift):
     pixnoise = data.noiseSigma
