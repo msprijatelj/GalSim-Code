@@ -48,7 +48,7 @@ def initFluxesAndRedshifts(data):
     fluxNum = 1
     redshiftNum = 1
     # Other parameters
-    fluxMin, fluxMax = 1.0, 1.0
+    fluxMin, fluxMax = 0.67, 0.67
     redshiftMin, redshiftMax = 0.6, 0.6
     data.ratios = numpy.linspace(fluxMin,fluxMax,fluxNum)
     data.redshifts = numpy.linspace(redshiftMin,redshiftMax,redshiftNum)
@@ -144,8 +144,13 @@ def makeGalaxies(data):
         figure2Setup(data)
     figure3Setup(data)
     """
-    runAllZebraScripts(data)
-    print data.allFractions
+    basic, forced, tractor, forcedTractor = runAllZebraScripts(data)
+    print "Basic Redshifts and Errors:\n", basic
+    print "Forced Redshifts and Errors:\n", forced
+    print "Tractor Redshifts and Errors:\n", tractor
+    print "Tractor deV-to-total ratios:\n", data.allFractions
+    print "Forced Tractor Redshifts and Errors:\n", forcedTractor
+    print "Forced Tractor deV-to-total ratios:\n", data.allForcedFractions
     
     
 def initMakeGalaxies(data):
@@ -157,7 +162,7 @@ def initMakeGalaxies(data):
     data.forTracScript = 'callzebra_ML_notImproved_forced_tractor'
     data.bForTracScript = 'callzebra_ML_notImproved_b_forced_tractor'
     data.dForTracScript = 'callzebra_ML_notImproved_d_forced_tractor'
-    data.allFractions = []
+    data.allFractions, data.allForcedFractions = [], []
 
 # Individual galaxy generator functions
 def makeGalaxy(data, fluxRatio, redshift):
@@ -562,7 +567,7 @@ def makeForcedTractorFluxList(data, fluxRatio, redshift):
         collectForcedFluxes(data, fluxes, bulgeFluxes, diskFluxes)
         collectForcedMags(data, mags, bulgeMags, diskMags)
         data.fractions.append(frac)
-    data.allFractions.append(data.fractions)
+    data.allForcedFractions.append(data.fractions)
 
 def prepareGalaxyWithTractor(tractor, band, w, h):
     galaxy = makeTractorGalaxy(band, w, h)
@@ -845,6 +850,7 @@ def makeCatalog(data, avgMags, magStDevs, catName):
         writeFile(catPath, contents, "a")
 
 def runAllZebraScripts(data):
+    basicOutput = forcedOutput = tractorOutput = forcedTractorOutput = None
     if data.basic:
         basicOutput = makeBasicRedshiftPlots(data)
     if data.forced:
@@ -852,8 +858,9 @@ def runAllZebraScripts(data):
     if data.Tractor:
         tractorOutput = makeTractorRedshiftPlots(data)
     if data.forcedTractor:
-        forcedTractorOutput = makeForcedTractorRedshiftPlots(data)      
+        forcedTractorOutput = makeForcedTractorRedshiftPlots(data)  
     figure4Setup(data)
+    return basicOutput, forcedOutput, tractorOutput, forcedTractorOutput
 
 def makeBasicRedshiftPlots(data):
     outShifts, loE, hiE = runZebraScript(data, data.basicScript)
@@ -878,12 +885,12 @@ def makeTractorRedshiftPlots(data):
     bTracOutShifts, bTracLoE, bTracHiE = runZebraScript(data,data.bTracScript)
     makeRedshiftPlot(data, bTracOutShifts, bTracLoE, bTracHiE, "*",
                      "Tractor, Bulge Flux")        
-    print np.array(tracOutShifts), np.array(tracLoE), np.array(tracHiE)
+    print np.array(bTracOutShifts), np.array(bTracLoE), np.array(bTracHiE)
 
     dTracOutShifts, dTracLoE, dTracHiE = runZebraScript(data,data.dTracScript)
     makeRedshiftPlot(data, dTracOutShifts, dTracLoE, dTracHiE, "+",
                      "Tractor, Disk Flux")        
-    print np.array(tracOutShifts), np.array(tracLoE), np.array(tracHiE)
+    print np.array(dTracOutShifts), np.array(dTracLoE), np.array(dTracHiE)
     return [[tracOutShifts, tracLoE, tracHiE],
             [bTracOutShifts, bTracLoE, bTracHiE],
             [dTracOutShifts, dTracLoE, dTracHiE]]
@@ -900,7 +907,7 @@ def makeForcedTractorRedshiftPlots(data):
     dForTrShifts,dForTrLoE,dForTrHiE=runZebraScript(data, data.dForTracScript)
     makeRedshiftPlot(data, dForTrShifts,dForTrLoE,dForTrHiE, "d",
                      "Forced Tractor, Disk Flux")
-    print np.array(forTrOutShifts),np.array(forTrLoE),np.array(forTrHiE)
+    print np.array(dForTrShifts),np.array(dForTrLoE),np.array(dForTrHiE)
     return [[forTrOutShifts, forTrLoE, forTrHiE],
             [bForTrShifts, bForTrLoE, bForTrHiE],
             [dForTrShifts, dForTrLoE, dForTrHiE]]
