@@ -33,8 +33,8 @@ def initMain(data):
     # Enable mode of operation
     data.basic = False
     data.forced = False
-    data.Tractor = True
-    data.forcedTractor = False
+    data.Tractor = False
+    data.forcedTractor = True
     data.forcedFilter = "r"
     # Establish basic image parameters
     data.pixel_scale = 0.2 # arcseconds
@@ -48,7 +48,7 @@ def initFluxesAndRedshifts(data):
     fluxNum = 1
     redshiftNum = 1
     # Other parameters
-    fluxMin, fluxMax = 0.0, 0.0
+    fluxMin, fluxMax = 1.0, 1.0
     redshiftMin, redshiftMax = 0.6, 0.6
     data.ratios = numpy.linspace(fluxMin,fluxMax,fluxNum)
     data.redshifts = numpy.linspace(redshiftMin,redshiftMax,redshiftNum)
@@ -97,7 +97,11 @@ def removeCatalogs(data):
     removeCatalog(data, "gal_catalog.cat")
     removeCatalog(data, "gal_for_catalog.cat")
     removeCatalog(data, "gal_trac_catalog.cat")
+    removeCatalog(data, "gal_b_trac_catalog.cat")
+    removeCatalog(data, "gal_d_trac_catalog.cat")
     removeCatalog(data, "gal_for_trac_catalog.cat")
+    removeCatalog(data, "gal_b_for_trac_catalog.cat")
+    removeCatalog(data, "gal_d_for_trac_catalog.cat")
 
 def removeCatalog(data, catName):
     catPath = data.catpath+catName
@@ -148,7 +152,11 @@ def initMakeGalaxies(data):
     data.basicScript = 'callzebra_ML_notImproved_basic'
     data.forScript = 'callzebra_ML_notImproved_forced'
     data.tracScript = 'callzebra_ML_notImproved_tractor'
+    data.bTracScript = 'callzebra_ML_notImproved_b_tractor'
+    data.dTracScript = 'callzebra_ML_notImproved_d_tractor'
     data.forTracScript = 'callzebra_ML_notImproved_forced_tractor'
+    data.bForTracScript = 'callzebra_ML_notImproved_b_forced_tractor'
+    data.dForTracScript = 'callzebra_ML_notImproved_d_forced_tractor'
     data.allFractions = []
 
 # Individual galaxy generator functions
@@ -213,27 +221,43 @@ def applyFilter(data,fluxRatio,redshift):
         if data.forced: getForcedFluxMag(data, images, models, filter_names[i])
     if data.Tractor: makeTractorFluxList(data, fluxRatio, redshift)
     if data.forcedTractor: makeForcedTractorFluxList(data, fluxRatio, redshift)
-    # Using accumulated color lists, generate the magnitudes
-    # embed acquired information in the data structure
-    makeCatalog(data, data.mags, data.magDevs, "gal_catalog.cat")
-    makeCatalog(data, data.forMags, data.forMagDevs, "gal_for_catalog.cat")
-    makeCatalog(data, data.tracMags, data.tracMagDevs, "gal_trac_catalog.cat")
-    makeCatalog(data, data.forTracMags, data.forTracMagDevs, 
-                "gal_for_trac_catalog.cat")
+    # Generate the magnitudes, place in ZEBRA catalog
+    makeAllCatalogs(data)
 
 def initFilterLists(data):
     data.fluxes, data.stDevs = [], []
     data.forFluxes, data.forStDevs = [], []
     data.tracFluxes, data.tracStDevs = [], []
+    data.bTracFluxes, data.bTracStDevs = [], []
+    data.dTracFluxes, data.dTracStDevs = [], []
     data.forTracFluxes, data.forTracStDevs = [], []
+    data.bForTracFluxes, data.bForTracStDevs = [], []
+    data.dForTracFluxes, data.dForTracStDevs = [], []
     data.mags, data.magDevs = [], []
     data.forMags, data.forMagDevs = [], []
     data.tracMags, data.tracMagDevs = [], []
+    data.bTracMags, data.bTracMagDevs = [], []
+    data.dTracMags, data.dTracMagDevs = [], []
     data.forTracMags, data.forTracMagDevs = [], []
+    data.bForTracMags, data.bForTracMagDevs = [], []
+    data.dForTracMags, data.dForTracMagDevs = [], []
     data.colors, data.colorStDevs = [], []
     data.forColors, data.forColorStDevs = [], []
     data.oldMagList, data.oldForMagList = [], []
     data.fractions = []
+
+def makeAllCatalogs(data):
+    makeCatalog(data, data.mags, data.magDevs, "gal_catalog.cat")
+    makeCatalog(data, data.forMags, data.forMagDevs, "gal_for_catalog.cat")
+    makeCatalog(data, data.tracMags, data.tracMagDevs, "gal_trac_catalog.cat")
+    makeCatalog(data,data.bTracMags,data.bTracMagDevs,"gal_b_trac_catalog.cat")
+    makeCatalog(data,data.dTracMags,data.dTracMagDevs,"gal_d_trac_catalog.cat")
+    makeCatalog(data, data.forTracMags, data.forTracMagDevs, 
+                "gal_for_trac_catalog.cat")
+    makeCatalog(data, data.bForTracMags, data.bForTracMagDevs, 
+                "gal_b_for_trac_catalog.cat")
+    makeCatalog(data, data.dForTracMags, data.dForTracMagDevs, 
+                "gal_d_for_trac_catalog.cat")
 
 def getBasicFluxMag(data, images, filter_name):
     print "\n"+"Using Basic FindAdaptiveMoment:"+"\n"
@@ -428,17 +452,19 @@ def makeTractorFluxList(data, fluxRatio, redshift):
     bands = data.filter_names
     for band in bands:
         # Make an optimized Tractor object and get its flux and magnitude
-        tractor = makeOptimizedTractor(data, band, fluxRatio, redshift)
-        """
-        flux, stDev, mag, magDev, frac = getFluxesAndMags(data,band,tractor)
-        data.tracFluxes.append(flux), data.tracStDevs.append(stDev)
-        data.tracMags.append(mag), data.tracMagDevs.append(magDev)
-        data.fractions.append(frac)
-        """
+        getFluxBulgeDisk(data, band, fluxRatio, redshift)
     data.allFractions.append(data.fractions)
 
 def makeOptimizedTractor(data, band, fluxRatio, redshift):
-    zeropoint_mag = data.filters[band].zeropoint
+    # Get a list of Tractor images and their widths/heights
+    tims, w, h = makeTractorImages(data, band, fluxRatio, redshift)
+    # Make a rudimentary galaxy model using band given and image dimensions
+    galaxy = makeTractorGalaxy(band, w, h)
+    # Put tractor images and galaxy model into Tractor object and optimize
+    tractor = optimizeTractor(Tractor(tims,[galaxy]))
+    return tractor
+
+def getFluxBulgeDisk(data, band, fluxRatio, redshift):
     # Get a list of Tractor images and their widths/heights
     tims, w, h = makeTractorImages(data, band, fluxRatio, redshift)
     # Put tractor images and galaxy model into Tractor object and optimize
@@ -447,30 +473,41 @@ def makeOptimizedTractor(data, band, fluxRatio, redshift):
     for tim in tims:
         # Make a rudimentary galaxy model using band given and image dimensions
         galaxy = makeTractorGalaxy(band, w, h)
-        tractor = optimizeTractor(Tractor([tim],[galaxy]))
-        flux, mag = getFluxesAndMags(data,band,tractor)
-        frac = galaxy.fracDev.getClippedValue()
+        package = getTractorFluxAndMag(data, band, tim, galaxy)
+        (flux, bulgeFlux, diskFlux, mag, bulgeMag, diskMag, frac) = package
         fluxes.append(flux), mags.append(mag), fracs.append(frac)
-        (bulgeFlux, diskFlux) = (flux*frac, flux*(1-frac))
         bulgeFluxes.append(bulgeFlux), diskFluxes.append(diskFlux)
-        bulgeMag = -2.5 * numpy.log10(bulgeFlux) + zeropoint_mag
-        diskMag = -2.5 * numpy.log10(diskFlux) + zeropoint_mag
         bulgeMags.append(bulgeMag), diskMags.append(diskMag)
+    collectFluxes(data, fluxes, bulgeFluxes, diskFluxes) 
+    collectMags(data, mags, bulgeMags, diskMags)
+    frac, fracDev = findAvgStDev(fracs)
+    data.fractions.append(frac)
+
+def getTractorFluxAndMag(data, band, tim, galaxy):
+    zeropoint_mag = data.filters[band].zeropoint
+    tractor = optimizeTractor(Tractor([tim],[galaxy]))
+    flux, mag = getFluxesAndMags(data,band,tractor)
+    frac = galaxy.fracDev.getClippedValue()
+    (bulgeFlux, diskFlux) = (flux*frac, flux*(1-frac))
+    bulgeMag = -2.5 * numpy.log10(bulgeFlux) + zeropoint_mag
+    diskMag = -2.5 * numpy.log10(diskFlux) + zeropoint_mag
+    return (flux, bulgeFlux, diskFlux, mag, bulgeMag, diskMag, frac)
+
+def collectFluxes(data, fluxes, bulgeFluxes, diskFluxes):
     flux, stDev = findAvgStDev(fluxes)
     bulgeFlux, bulgeStDev = findAvgStDev(bulgeFluxes)
     diskFlux, diskStDev = findAvgStDev(diskFluxes)
-    mag, magDev = findAvgStDev(mags)
-    
-    bulgeMag = -2.5 * numpy.log10(bulgeFlux) + zeropoint_mag
-    print
-    print "================================================================"
-    print band, flux, stDev, mag, tempMag
-    print "================================================================"
-    print
-    frac, fracDev = findAvgStDev(fracs)
     data.tracFluxes.append(flux), data.tracStDevs.append(stDev)
+    data.bTracFluxes.append(bulgeFlux), data.bTracStDevs.append(bulgeStDev)
+    data.dTracFluxes.append(diskFlux), data.dTracStDevs.append(diskStDev)
+
+def collectMags(data, mags, bulgeMags, diskMags):
+    mag, magDev = findAvgStDev(mags)
+    bulgeMag, bulgeMagDev = findAvgStDev(bulgeMags)
+    diskMag, diskMagDev = findAvgStDev(diskMags)
     data.tracMags.append(mag), data.tracMagDevs.append(magDev)
-    data.fractions.append(frac)
+    data.bTracMags.append(bulgeMag), data.bTracMagDevs.append(bulgeMagDev)
+    data.dTracMags.append(diskMag), data.dTracMagDevs.append(diskMagDev)
 
 def makeTractorImages(data, band, fluxRatio, redshift):
     pixnoise = data.noiseSigma
@@ -512,17 +549,49 @@ def makeForcedTractorFluxList(data, fluxRatio, redshift):
     for band in bands:
         # Make new tractor objects with parameters from forced Tractor object
         tims, w, h = makeTractorImages(data, band, fluxRatio, redshift)
-        galaxy = makeTractorGalaxy(band, w, h)
-        galaxy.pos = forTractor.catalog[0].pos
-        galaxy.shapeExp = forTractor.catalog[0].shapeExp
-        galaxy.shapeDev = forTractor.catalog[0].shapeDev
-        # Optimize Tractor object, get fluxes and magnitudes
-        tractor = optimizeForcedTractor(Tractor(tims,[galaxy]), band)
-        flux, mag = getFluxesAndMags(data,band,tractor)
-        data.forTracFluxes.append(flux), data.forTracStDevs.append(stDev)
-        data.forTracMags.append(mag), data.forTracMagDevs.append(magDev)
+        fluxes, mags, fracs = [], [], []
+        bulgeFluxes, diskFluxes, bulgeMags, diskMags = [], [], [], []
+        for tim in tims:
+            galaxy = prepareGalaxyWithTractor(forTractor, band, w, h)
+            # Optimize Tractor object, get fluxes and magnitudes
+            package = getTractorFluxAndMag(data, band, tim, galaxy)
+            (flux, bulgeFlux, diskFlux, mag, bulgeMag, diskMag, frac) = package
+            fluxes.append(flux), mags.append(mag), fracs.append(frac)
+            bulgeFluxes.append(bulgeFlux), diskFluxes.append(diskFlux)
+            bulgeMags.append(bulgeMag), diskMags.append(diskMag)
+        collectForcedFluxes(data, fluxes, bulgeFluxes, diskFluxes)
+        collectForcedMags(data, mags, bulgeMags, diskMags)
         data.fractions.append(frac)
     data.allFractions.append(data.fractions)
+
+def prepareGalaxyWithTractor(tractor, band, w, h):
+    galaxy = makeTractorGalaxy(band, w, h)
+    galaxy.pos = tractor.catalog[0].pos
+    galaxy.shapeExp = tractor.catalog[0].shapeExp
+    galaxy.shapeDev = tractor.catalog[0].shapeDev
+    return galaxy
+
+def collectForcedFluxes(data, fluxes, bulgeFluxes, diskFluxes):
+    flux, stDev = findAvgStDev(fluxes)
+    bulgeFlux, bulgeStDev = findAvgStDev(bulgeFluxes)
+    diskFlux, diskStDev = findAvgStDev(diskFluxes)
+    data.forTracFluxes.append(flux)
+    data.forTracStDevs.append(stDev)
+    data.bForTracFluxes.append(bulgeFlux)
+    data.bForTracStDevs.append(bulgeStDev)
+    data.dForTracFluxes.append(diskFlux)
+    data.dForTracStDevs.append(diskStDev)
+
+def collectForcedMags(data, mags, bulgeMags, diskMags):
+    mag, magDev = findAvgStDev(mags)
+    bulgeMag, bulgeMagDev = findAvgStDev(bulgeMags)
+    diskMag, diskMagDev = findAvgStDev(diskMags)
+    data.forTracMags.append(mag)
+    data.forTracMagDevs.append(magDev)
+    data.bForTracMags.append(bulgeMag)
+    data.bForTracMagDevs.append(bulgeMagDev)
+    data.dForTracMags.append(diskMag)
+    data.dForTracMagDevs.append(diskMagDev)
 
 def makeTractorGalaxy(band, w, h): 
     # Make a basic FixedCompositeGalaxy Tractor source
@@ -777,27 +846,64 @@ def makeCatalog(data, avgMags, magStDevs, catName):
 
 def runAllZebraScripts(data):
     if data.basic:
-        outShifts, loE, hiE = runZebraScript(data, data.basicScript)
-        makeRedshiftPlot(data, outShifts, loE, hiE, "o",
-                         "Basic")
-        print np.array(outShifts), np.array(loE), np.array(hiE)
+        basicOutput = makeBasicRedshiftPlots(data)
     if data.forced:
-        forOutShifts, forLoE, forHiE = runZebraScript(data, data.forScript)
-        makeRedshiftPlot(data, forOutShifts, forLoE, forHiE, "^",
-                         "Forced")
-        print np.array(forOutShifts), np.array(forLoE), np.array(forHiE)
+        forcedOutput = makeForcedRedshiftPlots(data)
     if data.Tractor:
-        tracOutShifts, tracLoE, tracHiE = runZebraScript(data, data.tracScript)
-        makeRedshiftPlot(data, tracOutShifts, tracLoE, tracHiE, "s",
-                         "Tractor")
-        print np.array(tracOutShifts), np.array(tracLoE), np.array(tracHiE)
+        tractorOutput = makeTractorRedshiftPlots(data)
     if data.forcedTractor:
-        forTrOutShifts,forTrLoE,forTrHiE=runZebraScript(data, 
-                                                        data.forTracScript)
-        makeRedshiftPlot(data, forTrOutShifts,forTrLoE,forTrHiE, "v",
-                         "Forced Tractor")
-        print np.array(forTrOutShifts),np.array(forTrLoE),np.array(forTrHiE)
+        forcedTractorOutput = makeForcedTractorRedshiftPlots(data)      
     figure4Setup(data)
+
+def makeBasicRedshiftPlots(data):
+    outShifts, loE, hiE = runZebraScript(data, data.basicScript)
+    makeRedshiftPlot(data, outShifts, loE, hiE, "o",
+                     "Basic")
+    print np.array(outShifts), np.array(loE), np.array(hiE)
+    return [[outShifts, loE, hiE]]
+
+def makeForcedRedshiftPlots(data):
+    forOutShifts, forLoE, forHiE = runZebraScript(data, data.forScript)
+    makeRedshiftPlot(data, forOutShifts, forLoE, forHiE, "^",
+                     "Forced")
+    print np.array(forOutShifts), np.array(forLoE), np.array(forHiE)
+    return [[forOutShifts, forLoE, forHiE]]
+
+def makeTractorRedshiftPlots(data):
+    tracOutShifts, tracLoE, tracHiE = runZebraScript(data, data.tracScript)
+    makeRedshiftPlot(data, tracOutShifts, tracLoE, tracHiE, "s",
+                     "Tractor, All Flux")
+    print np.array(tracOutShifts), np.array(tracLoE), np.array(tracHiE)
+    
+    bTracOutShifts, bTracLoE, bTracHiE = runZebraScript(data,data.bTracScript)
+    makeRedshiftPlot(data, bTracOutShifts, bTracLoE, bTracHiE, "*",
+                     "Tractor, Bulge Flux")        
+    print np.array(tracOutShifts), np.array(tracLoE), np.array(tracHiE)
+
+    dTracOutShifts, dTracLoE, dTracHiE = runZebraScript(data,data.dTracScript)
+    makeRedshiftPlot(data, dTracOutShifts, dTracLoE, dTracHiE, "+",
+                     "Tractor, Disk Flux")        
+    print np.array(tracOutShifts), np.array(tracLoE), np.array(tracHiE)
+    return [[tracOutShifts, tracLoE, tracHiE],
+            [bTracOutShifts, bTracLoE, bTracHiE],
+            [dTracOutShifts, dTracLoE, dTracHiE]]
+
+def makeForcedTractorRedshiftPlots(data):
+    forTrOutShifts,forTrLoE,forTrHiE=runZebraScript(data, data.forTracScript)
+    makeRedshiftPlot(data, forTrOutShifts,forTrLoE,forTrHiE, "v",
+                     "Forced Tractor, All Flux")
+    print np.array(forTrOutShifts),np.array(forTrLoE),np.array(forTrHiE)
+    bForTrShifts,bForTrLoE,bForTrHiE=runZebraScript(data,data.bForTracScript)
+    makeRedshiftPlot(data, bForTrShifts,bForTrLoE,bForTrHiE, "x",
+                     "Forced Tractor, Bulge Flux")
+    print np.array(bForTrShifts),np.array(bForTrLoE),np.array(bForTrHiE)
+    dForTrShifts,dForTrLoE,dForTrHiE=runZebraScript(data, data.dForTracScript)
+    makeRedshiftPlot(data, dForTrShifts,dForTrLoE,dForTrHiE, "d",
+                     "Forced Tractor, Disk Flux")
+    print np.array(forTrOutShifts),np.array(forTrLoE),np.array(forTrHiE)
+    return [[forTrOutShifts, forTrLoE, forTrHiE],
+            [bForTrShifts, bForTrLoE, bForTrHiE],
+            [dForTrShifts, dForTrLoE, dForTrHiE]]
 
 def runZebraScript(data, scriptName):
     # Move to directory where ZEBRA scripts are located, run script
