@@ -3,7 +3,6 @@ import sys
 import os
 import shutil
 import copy
-import math
 import string
 import matplotlib.pyplot as plt
 import numpy
@@ -14,7 +13,6 @@ import fitsio
 from tractor import *
 from tractor.galaxy import *
 
-##FIXME - Make everything run and compare in one run of the code
 
 ###############################################################################
 ##FIXME - Top-level function and initialization
@@ -666,7 +664,7 @@ def getFluxesAndMags(data, band, tractor):
     return flux, mag
 
 ###############################################################################
-##FIXME - Plot-generating functions
+##FIXME - Plot-generating functions - newPlot, figure[x]Setup outdated/disabled
 ###############################################################################
 
 def newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex):
