@@ -34,7 +34,7 @@ def initMain(data):
     data.basic = False
     data.forced = False
     data.Tractor = False
-    data.forcedTractor = True
+    data.forcedTractor = False
     data.forcedFilter = "r"
     # Establish basic image parameters
     data.pixel_scale = 0.2 # arcseconds
@@ -45,8 +45,8 @@ def initMain(data):
 
 def initFluxesAndRedshifts(data):
     # Iterations to complete
-    fluxNum = 4
-    redshiftNum = 3
+    fluxNum = 1
+    redshiftNum = 1
     # Other parameters
     fluxMin, fluxMax = 0.0, 1.0
     redshiftMin, redshiftMax = 0.2, 1.0
