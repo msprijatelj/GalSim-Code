@@ -40,16 +40,16 @@ def initMain(data):
     data.pixel_scale = 0.2 # arcseconds
     data.imageSize = 64/data.pixel_scale*0.2
     data.noiseIterations = 100
-    data.tractorIterations = 8
-    data.noiseSigma = 1e-15
+    data.tractorIterations = 5
+    data.noiseSigma = .01
 
 def initFluxesAndRedshifts(data):
     # Iterations to complete
-    fluxNum = 1
-    redshiftNum = 1
+    fluxNum = 4
+    redshiftNum = 3
     # Other parameters
-    fluxMin, fluxMax = 0.67, 0.67
-    redshiftMin, redshiftMax = 0.6, 0.6
+    fluxMin, fluxMax = 0.0, 1.0
+    redshiftMin, redshiftMax = 0.2, 1.0
     data.ratios = numpy.linspace(fluxMin,fluxMax,fluxNum)
     data.redshifts = numpy.linspace(redshiftMin,redshiftMax,redshiftNum)
 
@@ -135,6 +135,7 @@ def makeGalaxies(data):
             data.logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
             applyFilter(data,fluxRatio,redshift)
+            bulgeTotalPlot(data, fluxRatio, redshift)
             #newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex)
             shiftIndex += 1
         fluxIndex += 1
@@ -147,11 +148,12 @@ def makeGalaxies(data):
     basic, forced, tractor, forcedTractor = runAllZebraScripts(data)
     print "Basic Redshifts and Errors:\n", basic
     print "Forced Redshifts and Errors:\n", forced
-    print "Tractor Redshifts and Errors:\n", tractor
+    print "Tractor Redshifts and Errors: All, Bulge, Disk:\n", tractor
     print "Tractor deV-to-total ratios:\n", data.allFractions
-    print "Forced Tractor Redshifts and Errors:\n", forcedTractor
-    print "Forced Tractor deV-to-total ratios:\n", data.allForcedFractions
-    
+    print "Forced Tractor Redshifts and Errors: All, Bulge, Disk:"
+    print forcedTractor
+    print "Forced Tractor deV-to-total ratios:", data.allForcedFractions
+    print "Signal-to-noise ratios:", data.allSigToNoise
     
 def initMakeGalaxies(data):
     data.basicScript = 'callzebra_ML_notImproved_basic'
@@ -163,6 +165,7 @@ def initMakeGalaxies(data):
     data.bForTracScript = 'callzebra_ML_notImproved_b_forced_tractor'
     data.dForTracScript = 'callzebra_ML_notImproved_d_forced_tractor'
     data.allFractions, data.allForcedFractions = [], []
+    data.allSigToNoise = []
 
 # Individual galaxy generator functions
 def makeGalaxy(data, fluxRatio, redshift):
@@ -224,6 +227,7 @@ def applyFilter(data,fluxRatio,redshift):
         # Make lists of flux using the enabled method
         if data.basic: getBasicFluxMag(data, images, filter_names[i])
         if data.forced: getForcedFluxMag(data, images, models, filter_names[i])
+    data.allSigToNoise.append(data.sigToNoise)
     if data.Tractor: makeTractorFluxList(data, fluxRatio, redshift)
     if data.forcedTractor: makeForcedTractorFluxList(data, fluxRatio, redshift)
     # Generate the magnitudes, place in ZEBRA catalog
@@ -249,7 +253,7 @@ def initFilterLists(data):
     data.colors, data.colorStDevs = [], []
     data.forColors, data.forColorStDevs = [], []
     data.oldMagList, data.oldForMagList = [], []
-    data.fractions = []
+    data.fractions, data.sigToNoise = [], []
 
 def makeAllCatalogs(data):
     makeCatalog(data, data.mags, data.magDevs, "gal_catalog.cat")
@@ -578,6 +582,7 @@ def prepareGalaxyWithTractor(tractor, band, w, h):
 
 def collectForcedFluxes(data, fluxes, bulgeFluxes, diskFluxes):
     flux, stDev = findAvgStDev(fluxes)
+    data.sigToNoise.append(flux/stDev)
     bulgeFlux, bulgeStDev = findAvgStDev(bulgeFluxes)
     diskFlux, diskStDev = findAvgStDev(diskFluxes)
     data.forTracFluxes.append(flux)
@@ -790,7 +795,7 @@ def makeRedshiftPlot(data, outputRedshifts, loError, hiError, mark, name):
                      mfc = "%s" %color, capsize = 10, ecolor = "%s"%color,
                      label = "%0.2f B/T, %s" % (fluxRatio, name))
 
-def figure4Setup(data):
+def redshiftPlotSetup(data):
     # Finallizing redshift plot
     plt.figure(4)
     redshiftLine = linspace(0,2)
@@ -805,7 +810,38 @@ def figure4Setup(data):
     plt.title("Measured Redshifts vs. Actual Redshifts, All Methods")
     saveName = "Redshifts_all.png"
     plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
-        
+    plt.close()
+    
+def bulgeTotalPlot(data, fluxRatio, redshift):
+    plt.figure(5)
+    fractions = data.fractions
+    n_groups  = len(fractions)
+    index, filter_name_list = range(n_groups), data.filter_name_list
+    plt.errorbar(index, fractions, None, None, barsabove = True, 
+                 marker = "o", linestyle = "none", 
+                 mfc = "b",capsize = 10,ecolor = "b",
+                 label = "%0.2f B/T, %0.2f redshift" % (fluxRatio,redshift))
+    plt.xticks(index, filter_name_list)        
+    bulgeTotalSetup(data, fluxRatio, redshift)    
+    
+    
+    
+    
+def bulgeTotalSetup(data, fluxRatio, redshift):
+    plt.figure(5)
+    plt.xlim([-1,len(data.filter_names)])
+    plt.ylim([0,1])
+    plt.xlabel('Band')
+    plt.ylabel('Measured DeV-To-Total Ratio')
+    plt.grid()
+    lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+    plt.show()
+    plt.title("DeV-To-Total Ratios per Band, "+
+              "%0.2f B/T %0.2f Redshift" % (fluxRatio, redshift))
+    saveName = "%0.2f-BT-%0.2f-Redshift.png"%(fluxRatio,redshift)
+    plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
+    plt.close()
+    
 ###############################################################################
 ##FIXME - ZEBRA read/write files
 ###############################################################################
@@ -859,7 +895,7 @@ def runAllZebraScripts(data):
         tractorOutput = makeTractorRedshiftPlots(data)
     if data.forcedTractor:
         forcedTractorOutput = makeForcedTractorRedshiftPlots(data)  
-    figure4Setup(data)
+    redshiftPlotSetup(data)
     return basicOutput, forcedOutput, tractorOutput, forcedTractorOutput
 
 def makeBasicRedshiftPlots(data):
@@ -878,7 +914,7 @@ def makeForcedRedshiftPlots(data):
 
 def makeTractorRedshiftPlots(data):
     tracOutShifts, tracLoE, tracHiE = runZebraScript(data, data.tracScript)
-    makeRedshiftPlot(data, tracOutShifts, tracLoE, tracHiE, "s",
+    makeRedshiftPlot(data, tracOutShifts, tracLoE, tracHiE, "x",
                      "Tractor, All Flux")
     print np.array(tracOutShifts), np.array(tracLoE), np.array(tracHiE)
     
@@ -901,7 +937,7 @@ def makeForcedTractorRedshiftPlots(data):
                      "Forced Tractor, All Flux")
     print np.array(forTrOutShifts),np.array(forTrLoE),np.array(forTrHiE)
     bForTrShifts,bForTrLoE,bForTrHiE=runZebraScript(data,data.bForTracScript)
-    makeRedshiftPlot(data, bForTrShifts,bForTrLoE,bForTrHiE, "x",
+    makeRedshiftPlot(data, bForTrShifts,bForTrLoE,bForTrHiE, "s",
                      "Forced Tractor, Bulge Flux")
     print np.array(bForTrShifts),np.array(bForTrLoE),np.array(bForTrHiE)
     dForTrShifts,dForTrLoE,dForTrHiE=runZebraScript(data, data.dForTracScript)
