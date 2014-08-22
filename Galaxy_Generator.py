@@ -135,9 +135,10 @@ def makeGalaxies(data):
             data.logger.debug('Created bulge+disk galaxy final profile')
             # draw profile through LSST filters
             applyFilter(data,fluxRatio,redshift)
-            bulgeTotalPlot(data, fluxRatio, redshift)
+            bulgeTotalPlot(data, fluxRatio, redshift, shiftIndex)
             #newPlot(data,fluxRatio,redshift,fluxIndex,shiftIndex)
             shiftIndex += 1
+        bulgeTotalSetup(data, fluxRatio)    
         fluxIndex += 1
     """    
     figure1Setup(data)
@@ -812,22 +813,19 @@ def redshiftPlotSetup(data):
     plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
     plt.close()
     
-def bulgeTotalPlot(data, fluxRatio, redshift):
+def bulgeTotalPlot(data, fluxRatio, redshift, shiftIndex):
     plt.figure(5)
     fractions = data.fractions
     n_groups  = len(fractions)
+    color = (["b","c","g","y","r","m"])[shiftIndex]
     index, filter_name_list = range(n_groups), data.filter_name_list
     plt.errorbar(index, fractions, None, None, barsabove = True, 
                  marker = "o", linestyle = "none", 
-                 mfc = "b",capsize = 10,ecolor = "b",
+                 mfc = "%s"%color, capsize = 10, ecolor = "%s"%color,
                  label = "%0.2f B/T, %0.2f redshift" % (fluxRatio,redshift))
     plt.xticks(index, filter_name_list)        
-    bulgeTotalSetup(data, fluxRatio, redshift)    
     
-    
-    
-    
-def bulgeTotalSetup(data, fluxRatio, redshift):
+def bulgeTotalSetup(data, fluxRatio):
     plt.figure(5)
     plt.xlim([-1,len(data.filter_names)])
     plt.ylim([0,1])
@@ -837,8 +835,8 @@ def bulgeTotalSetup(data, fluxRatio, redshift):
     lgd = plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
     plt.show()
     plt.title("DeV-To-Total Ratios per Band, "+
-              "%0.2f B/T %0.2f Redshift" % (fluxRatio, redshift))
-    saveName = "%0.2f-BT-%0.2f-Redshift.png"%(fluxRatio,redshift)
+              "%0.2f B/T" % (fluxRatio))
+    saveName = "%0.2f-BT.png"%(fluxRatio)
     plt.savefig(saveName,bbox_extra_artists=(lgd,),bbox_inches='tight')
     plt.close()
     
