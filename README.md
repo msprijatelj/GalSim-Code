@@ -28,6 +28,10 @@ For the current code setup, the ZEBRA and GalSim-Code directories should reside 
 * scripts_to_add/		->	zebra-1.10/scripts/
 
 
+Running Galaxy_Generator.py
+===========================
+
+
 
 
 References
