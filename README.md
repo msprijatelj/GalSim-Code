@@ -4,6 +4,11 @@ GalSim-Code
 This script is designed to utilize the Python modules GalSim and Tractor to simulate composite galaxies of certain redshifts and bulge-to-total ratios.  It then takes the AB magnitudes and errors of these galaxies and feeds them into a redshift analyzer software, ZEBRA.
 
 
+Primary Goal
+============
+
+Galaxy flux is frequently composed of the flux from two galaxy components:  A bulge of red stars and a disk of blue stars.  Usually, when calculating the redshift of a galaxy with redshift analysis software, all of the galaxy's flux is used in the analysis.  The primary goal of this project is to find if it is more accurate to use only a galaxy's bulge flux in the analysis of redshifts instead of its total flux.
+
 
 Dependencies
 ============
@@ -38,7 +43,9 @@ The function initMain allows the enabling and disabling of different galaxy gene
 
 In the function initFluxesAndRedshifts, the number of bulge-to-total ratios and redshifts can be changed, as well as the range of ratios and redshifts.  The lists of ratios and redshifts are generated using the numpy.linspace method.
 
-When the script is run, the available redshift analysis data, such as redshift, lower-bound error, and higher-bound error, will be printed, along with deV-to-total ratios for the Tractor and Forced Tractor methods.  In addition, a list of signal-to-noise ratios will be printed.  A redshift comparison plot containing all calculated redshifts for the run will be created in the main directory.  If Tractor or Forced Tractor is used, deV-to-total ratio vs filter band plots will also be created for each bulge-to-total ratio used in the run.
+When the script is run, the available redshift analysis data, such as redshift, lower-bound error, and higher-bound error, will be printed, along with deV-to-total ratios for the Tractor and Forced Tractor methods.  In addition, a list of signal-to-noise ratios will be printed.  A redshift comparison plot containing all calculated redshifts for the run will be created in the main directory.  
+
+If Tractor or Forced Tractor is used, deV-to-total ratio vs filter band plots will also be created for each bulge-to-total ratio used in the run.  Furthermore, the redshifts generated will include those calculated from only the bulge flux or disk flux of the galaxy; these will be included in the final redshift plot.
 
 
 References
