@@ -28,10 +28,10 @@ Setup & Files to Add
 
 For the current code setup, the ZEBRA and GalSim-Code directories should reside in the same directory.  Move the files contained the following directories to their designated directory in zebra-1.10:
 
-* filters_to_add/		->	zebra-1.10/examples/filters/
-* templates_to_add/	->	zebra-1.10/examples/templates/
-* conf_files/		    ->	zebra-1.10/examples/ML_notImproved/
-* scripts_to_add/		->	zebra-1.10/scripts/
+* filters_to_add/		-->	zebra-1.10/examples/filters/
+* templates_to_add/	-->	zebra-1.10/examples/templates/
+* conf_files/		    -->	zebra-1.10/examples/ML_notImproved/
+* scripts_to_add/		-->	zebra-1.10/scripts/
 
 
 Running Galaxy_Generator.py
