@@ -1,14 +1,12 @@
 # column_name         column_number    minimum_magnitude error
 #               type(F,dF,Z)   minimum_magnitude
-LSST_u.res	F	1
-LSST_g.res	F	3
-LSST_r.res	F	5
-LSST_i.res	F	7
-LSST_z.res	F	9
-LSST_y.res	F	11
-LSST_u.res	dF	2	x	0.05
-LSST_g.res	dF	4	x	0.05
-LSST_r.res	dF	6	x	0.05
-LSST_i.res	dF	8	x	0.05
-LSST_z.res	dF	10	x	0.05
-LSST_y.res	dF	12	x	0.05
+hsc_g.dat	F	1
+hsc_r.dat	F	3
+hsc_i.dat	F	5
+hsc_z.dat	F	7
+hsc_y.dat	F	9
+hsc_g.dat	dF	2	x	0.05
+hsc_r.dat	dF	4	x	0.05
+hsc_i.dat	dF	6	x	0.05
+hsc_z.dat	dF	8	x	0.05
+hsc_y.dat	dF	10	x	0.05

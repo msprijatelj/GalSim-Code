@@ -20,11 +20,18 @@ from tractor.galaxy import *
 
 def main(argv):
     class Struct(): pass
+	#object
     data = Struct()
+	#give parameters that weren't passed in at runtime,
+	#what parameters *are* passed in at runtime?
     initMain(data)
+	#currently broken, returns [0.0]
     initFluxesAndRedshifts(data)
+	#gathers zebra SEDs and Filters
     initSEDsAndFilters(data)
+	#deletes old data samples
     removeCatalogs(data)
+	#makes new data samples
     makeGalaxies(data)
 
 def initMain(data):
@@ -70,17 +77,21 @@ def initSEDsAndFilters(data):
     for i in xrange(1,len(data.filter_names)):
         data.color_name_list.append("%s-%s" % (data.filter_names[i-1].upper(),
                                     data.filter_names[i].upper()))
+	#deletes old data
     clearOutputs(data.filter_names)
     data.filters = readInLSST(datapath,data.filter_names)
     logger.debug('Read in filters')
 
 # Initialization functions
 def readInSEDs(datapath):
+	#these are not the templates that i have in my zebra-1.10/examples/templates
+	#directory. the names ar eslightly off and without the _ext
     SED_names = ['CWW_E_ext', 'CWW_Sbc_ext', 'CWW_Scd_ext', 'CWW_Im_ext']
     SEDs = {}
     for SED_name in SED_names:
         SED_filename = os.path.join(datapath, '{}.sed'.format(SED_name))
         SED = galsim.SED(SED_filename, wave_type='Ang')
+		#Q: is this perhaps not general?
         SEDs[SED_name] = SED.withFluxDensity(target_flux_density=1.0, 
                                              wavelength=500)
     return SEDs
@@ -92,6 +103,7 @@ def clearOutputs(filter_names):
             shutil.rmtree(outputDir)
 
 def removeCatalogs(data):
+	#delete old catalogs
     removeCatalog(data, "gal_catalog.cat")
     removeCatalog(data, "gal_for_catalog.cat")
     removeCatalog(data, "gal_trac_catalog.cat")
@@ -155,6 +167,7 @@ def makeGalaxies(data):
     print "Signal-to-noise ratios:", data.allSigToNoise
     
 def initMakeGalaxies(data):
+	#gathers all script names in more convenient namespace
     data.basicScript = 'callzebra_ML_notImproved_basic'
     data.forScript = 'callzebra_ML_notImproved_forced'
     data.tracScript = 'callzebra_ML_notImproved_tractor'
@@ -211,6 +224,7 @@ def makeFinal(data, fluxRatio, bulge, disk):
 
 def applyFilter(data,fluxRatio,redshift):
     # initialize (pseudo-)random number generator and noise
+	#makes every run the same
     random_seed = 1234567
     rng = galsim.BaseDeviate(random_seed)
     noiseSigma = data.noiseSigma
@@ -786,7 +800,9 @@ def makeRedshiftPlot(data, outputRedshifts, loError, hiError, mark, name):
         color = colors[fluxIndex]
         usedShifts, usedErrors = [], [[],[]]
         for shift in redshifts:
+		#usedShifts is just outShifts
             usedShifts.append(outShifts.pop(0))
+		#usedErrors is just errors
             usedErrors[0].append(errors[0].pop(0))
             usedErrors[1].append(errors[1].pop(0))
         plt.errorbar(redshifts, usedShifts, usedErrors, None, barsabove = True,
@@ -950,6 +966,7 @@ def runZebraScript(data, scriptName):
     subprocess.Popen(['./' + scriptName]).wait()
     datPath = '../examples/ML_notImproved/ML.dat'
     # Grab redshifts from the ZEBRA output ML.dat file
+	#parses output .dat file
     (rs, loE, hiE) = readRedshifts(datPath)
     os.chdir(data.path)
     return rs, loE, hiE
@@ -1018,4 +1035,5 @@ def getArrayFlux(data,images):
 
 
 if __name__ == "__main__":
+	#run from the terminal w/ arguments passed in...
     main(sys.argv)
